@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="180" viewBox="0 0 300 180"><defs>
+<linearGradient id="dark" x2="1" y2="1"><stop stop-color="#495360"/><stop offset=".5" stop-color="#202630"/><stop offset="1" stop-color="#0d121b"/></linearGradient>
+<linearGradient id="metal" x2="1" y2="1"><stop stop-color="#edf1f4"/><stop offset=".4" stop-color="#adb9c3"/><stop offset="1" stop-color="#63717e"/></linearGradient>
+<linearGradient id="blue" x2="1" y2=".8"><stop stop-color="#038fd5"/><stop offset="1" stop-color="#005aa9"/></linearGradient>
+<linearGradient id="orange" x2="1" y2="1"><stop stop-color="#ffbc24"/><stop offset="1" stop-color="#fa5b0b"/></linearGradient>
+<linearGradient id="rgb"><stop stop-color="#78e4ff"/><stop offset=".45" stop-color="#bda0ff"/><stop offset="1" stop-color="#ed54b6"/></linearGradient>
+<filter id="shadow" x="-30%" y="-30%" width="170%" height="170%"><feDropShadow dx="1" dy="5" stdDeviation="3" flood-color="#1c304c" flood-opacity=".16"/></filter>
+</defs><rect x="90" y="35" width="120" height="110" rx="12" fill="#eef3fb" stroke="#c3d4ea"/><path d="m110 80 40-23 40 23-40 23zM110 80v44l40 23 40-23V80m-40 23v44" fill="none" stroke="#6e9bd5" stroke-width="4"/></svg>

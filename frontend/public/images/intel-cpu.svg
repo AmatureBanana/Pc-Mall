@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="180" viewBox="0 0 300 180"><defs>
+<linearGradient id="dark" x2="1" y2="1"><stop stop-color="#495360"/><stop offset=".5" stop-color="#202630"/><stop offset="1" stop-color="#0d121b"/></linearGradient>
+<linearGradient id="metal" x2="1" y2="1"><stop stop-color="#edf1f4"/><stop offset=".4" stop-color="#adb9c3"/><stop offset="1" stop-color="#63717e"/></linearGradient>
+<linearGradient id="blue" x2="1" y2=".8"><stop stop-color="#038fd5"/><stop offset="1" stop-color="#005aa9"/></linearGradient>
+<linearGradient id="orange" x2="1" y2="1"><stop stop-color="#ffbc24"/><stop offset="1" stop-color="#fa5b0b"/></linearGradient>
+<linearGradient id="rgb"><stop stop-color="#78e4ff"/><stop offset=".45" stop-color="#bda0ff"/><stop offset="1" stop-color="#ed54b6"/></linearGradient>
+<filter id="shadow" x="-30%" y="-30%" width="170%" height="170%"><feDropShadow dx="1" dy="5" stdDeviation="3" flood-color="#1c304c" flood-opacity=".16"/></filter>
+</defs><g filter="url(#shadow)"><path d="m96 12 33-5 89 8-32 8z" fill="#159ddd"/><path d="m96 12 33 11v143l-33-17z" fill="#075c8e"/><path d="m129 23 89-8v143l-89 8z" fill="url(#blue)"/><path d="m129 23 89-8v39l-89 8z" fill="#0786c8"/><text x="141" y="93" fill="white" font-family="Arial,sans-serif" font-size="25" font-weight="600">CORE</text><text x="143" y="115" fill="#def6ff" font-family="Arial,sans-serif" font-size="20">i5</text><text x="142" y="141" fill="#bdefff" font-family="Arial,sans-serif" font-size="6.5">DESKTOP PROCESSOR</text><path d="M108 36v21m0 6v4" stroke="#64c9f4" stroke-width="2"/><path d="m202 27 10-1v17l-10 1z" fill="#ebf8ff"/><text x="203" y="38" font-size="7" fill="#0a65a8">14</text></g></svg>

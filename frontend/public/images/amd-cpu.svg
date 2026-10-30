@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="180" viewBox="0 0 300 180"><defs>
+<linearGradient id="dark" x2="1" y2="1"><stop stop-color="#495360"/><stop offset=".5" stop-color="#202630"/><stop offset="1" stop-color="#0d121b"/></linearGradient>
+<linearGradient id="metal" x2="1" y2="1"><stop stop-color="#edf1f4"/><stop offset=".4" stop-color="#adb9c3"/><stop offset="1" stop-color="#63717e"/></linearGradient>
+<linearGradient id="blue" x2="1" y2=".8"><stop stop-color="#038fd5"/><stop offset="1" stop-color="#005aa9"/></linearGradient>
+<linearGradient id="orange" x2="1" y2="1"><stop stop-color="#ffbc24"/><stop offset="1" stop-color="#fa5b0b"/></linearGradient>
+<linearGradient id="rgb"><stop stop-color="#78e4ff"/><stop offset=".45" stop-color="#bda0ff"/><stop offset="1" stop-color="#ed54b6"/></linearGradient>
+<filter id="shadow" x="-30%" y="-30%" width="170%" height="170%"><feDropShadow dx="1" dy="5" stdDeviation="3" flood-color="#1c304c" flood-opacity=".16"/></filter>
+</defs><g filter="url(#shadow)"><path d="m85 25 102-15 37 17-102 16z" fill="#53565c"/><path d="m85 25 37 18v128l-37-21z" fill="#27292c"/><path d="m122 43 102-16v125l-102 19z" fill="url(#dark)"/><path d="m122 43 16-3v128l-16 3z" fill="url(#orange)"/><path d="m85 25 9 5 0 123-9-3z" fill="#ffa313"/><circle cx="178" cy="91" r="32" fill="none" stroke="#62646a" stroke-width="8"/><path d="M156 111a29 29 0 1 0 0-39" fill="none" stroke="#f59832" stroke-width="7"/><text x="151" y="94" fill="white" font-family="Arial,sans-serif" font-size="18" font-weight="700">RYZEN</text><text x="192" y="145" fill="#ff9422" font-family="Arial,sans-serif" font-size="29" font-weight="700">7</text></g></svg>
