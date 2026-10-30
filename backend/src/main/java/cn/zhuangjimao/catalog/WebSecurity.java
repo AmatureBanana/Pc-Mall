@@ -13,7 +13,7 @@ class WebSecurity {
     SecurityFilterChain publicBrowser(HttpSecurity http) throws Exception {
         return http.authorizeHttpRequests(authorize -> authorize
                 .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                .requestMatchers(HttpMethod.GET, "/", "/index.html", "/assets/**", "/images/**", "/favicon.svg", "/api/products").permitAll()
+                .requestMatchers(HttpMethod.GET, "/", "/index.html", "/assets/**", "/images/**", "/favicon.svg", "/api/products", "/api/products/*").permitAll()
                 .anyRequest().denyAll())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, exception) -> {

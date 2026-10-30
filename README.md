@@ -1,6 +1,6 @@
 # 装机猫 · 电脑硬件商城
 
-任务 01：从空 MySQL 库经 Flyway 迁移、MyBatis 查询、公开 HTTP 接口，到 Vue 商品页面的可运行最小路径。UI 参考用户提供的蓝白硬件商城设计，支持桌面四列、平板与手机布局。
+任务 01～02：从空 MySQL 库经 Flyway 迁移、MyBatis 查询、公开 HTTP 接口，到 Vue 商品页面；支持八类硬件服务端查询、关键词搜索和商品详情。UI 延续蓝白硬件商城设计。
 
 ## 环境与依赖
 
@@ -31,7 +31,7 @@ $env:MAVEN_USER_HOME = "$PWD\.local\maven-user"
 ./scripts/local-db.ps1 stop
 ```
 
-应用启动时自动运行版本化 SQL：V1 建表、V2 导入 12 个型号、V3 修正机箱的厂商来源地址。Flyway 校验历史且禁用 clean，重复启动不重复导入；不要编辑已执行的迁移，应新增版本。
+应用启动时自动运行版本化 SQL：V1 建表、V2 导入 12 个型号、V3 修正机箱的厂商来源地址、V4 增加描述和独立分类参数。Flyway 校验历史且禁用 clean，重复启动不重复导入；不要编辑已执行的迁移，应新增版本。参数核验与数据契约见 [docs/catalog-parameters.md](docs/catalog-parameters.md)。
 
 ## 开发启动
 
@@ -93,6 +93,7 @@ npm.cmd run dev
 ```powershell
 . ./.local/env.ps1
 ./mvnw.cmd -Dtest=ProductBrowserTest test
+./mvnw.cmd -Dtest=ProductCatalogTest test
 ./mvnw.cmd -Dtest=TestDatabaseSafetyTest test
 ./mvnw.cmd -Dtest=CatalogFailureTest test
 cd frontend
@@ -100,10 +101,12 @@ npm.cmd run typecheck
 npm.cmd test -- --grep 'guest sees'
 ```
 
-执行结果和 SYS-T01 适用范围见 [docs/evidence/task-01.md](docs/evidence/task-01.md)，桌面与手机截图也在同一目录。
+执行结果和 SYS-T01 适用范围见 [任务01证据](docs/evidence/task-01.md)及[任务02证据](docs/evidence/task-02.md)，截图在同一目录。
 
 ## 当前交付边界
 
-公开的 `GET /api/products` 返回上架商品的真实 ID、销售 SKU、名称、类别、品牌、型号、展示摘要、图片路径、两位小数金额字符串、库存及来源说明。查询仅从数据库读取，失败返回结构化错误及 HTTP 503/500；未开放任何管理写接口，Spring Security 默认拒绝其他受保护路径，保留 CSRF 防护。
+公开的 `GET /api/products?category=MEMORY&keyword=Kingston` 返回当前上架商品。category 可省略，或使用 CPU、MOTHERBOARD、GPU、MEMORY、SSD、PSU、CASE、COOLER；keyword 最长100字符，首尾空白忽略，对名称、品牌、型号、SKU和摘要做不区分大小写的基础文本匹配，`%`/`_`按字面查询。二者组合过滤。合法空结果为 HTTP200、`data: []`；非法类别或过长关键词为400、`INVALID_QUERY`。
 
-页面中的类别、关键词、价格及排序是对当前已加载商品的便捷筛选。任务 02 仍负责服务端分类与搜索、详情、完整分类参数及其验收；本票数据摘要不能作为兼容检测或购买准入依据。认证、购物车、订单、推荐均未在本票提前实现。
+`GET /api/products/{id}` 返回 `data: {product, description, parameters, dataVersion}`，其中 product 保留真实ID、销售SKU、类别、品牌、型号、图片地址、两位小数金额字符串、库存与来源说明，parameters 保留有类型数值、集合、单位和逐字段来源。详情读取同一数据库来源，在只读事务中形成一致快照；不缓存价格、库存或上下架状态。不合法ID为400/`INVALID_PRODUCT_ID`，不存在为404/`PRODUCT_NOT_FOUND`，下架为409/`PRODUCT_NOT_SELECTABLE`；缺货仍能查看并显示“暂时缺货”。服务失败为503/500，不转换为空列表。
+
+点击商品名称或图片打开详情，`/#product/7`这样的链接可直接打开并刷新；弹窗提供价格库存刷新、错误重试和关闭操作。类别及关键词走真实后端，价格范围与排序继续对当前查询结果做便捷筛选。未开放管理写接口，Spring Security 默认拒绝其他受保护路径并保留CSRF。认证、DIY工作区、兼容规则、购物车、订单和推荐由后续任务实现。

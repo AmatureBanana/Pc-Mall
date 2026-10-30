@@ -7,10 +7,23 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 class ApiErrors {
     private static final Logger log = LoggerFactory.getLogger(ApiErrors.class);
+
+    @ExceptionHandler(CatalogException.class)
+    ResponseEntity<ApiError> catalog(CatalogException exception) {
+        return ResponseEntity.status(exception.status).body(new ApiError(exception.code, exception.getMessage()));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ResponseEntity<ApiError> invalidArgument(MethodArgumentTypeMismatchException exception) {
+        boolean id = exception.getName().equals("id");
+        return ResponseEntity.badRequest().body(new ApiError(id ? "INVALID_PRODUCT_ID" : "INVALID_QUERY",
+                id ? "商品 ID 必须是有效正整数。" : "请选择有效的硬件类别。"));
+    }
 
     @ExceptionHandler(DataAccessException.class)
     ResponseEntity<ApiError> databaseUnavailable(DataAccessException exception) {

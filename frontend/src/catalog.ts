@@ -15,6 +15,13 @@ export interface Product {
   brand: string; model: string; summary: string; imageUrl: string; price: string; stock: number
   sourceUrl: string; priceNote: string
 }
+export interface ProductParameter {
+  code: string; label: string; value: string | number | boolean | string[] | null
+  unit: string; sourceUrl: string; note: string
+}
+export interface ProductDetail {
+  product: Product; description: string; parameters: ProductParameter[]; dataVersion: string
+}
 function isProduct(value: unknown): value is Product {
   if (!value || typeof value !== 'object') return false
   const item = value as Record<string, unknown>
@@ -25,8 +32,11 @@ function isProduct(value: unknown): value is Product {
     && typeof item.price === 'string' && /^\d+\.\d{2}$/.test(item.price)
     && Number.isSafeInteger(item.stock) && Number(item.stock) >= 0
 }
-export async function loadProducts(signal: AbortSignal): Promise<Product[]> {
-  const response = await fetch('/api/products', { signal, headers: { Accept: 'application/json' } })
+export async function loadProducts(signal: AbortSignal, category: Category = 'ALL', keyword = ''): Promise<Product[]> {
+  const query = new URLSearchParams()
+  if (category !== 'ALL') query.set('category', category)
+  if (keyword) query.set('keyword', keyword)
+  const response = await fetch(`/api/products${query.size ? `?${query}` : ''}`, { signal, headers: { Accept: 'application/json' } })
   if (!response.ok) throw new Error('商品服务暂时不可用，请稍后重试。')
   const body: unknown = await response.json()
   if (!body || typeof body !== 'object' || !('data' in body)
@@ -34,6 +44,51 @@ export async function loadProducts(signal: AbortSignal): Promise<Product[]> {
     throw new Error('商品数据格式异常，请稍后重试。')
   }
   return body.data
+}
+export class ProductRequestError extends Error {
+  constructor(message: string, readonly retryable: boolean) { super(message) }
+}
+function isParameter(value: unknown): value is ProductParameter {
+  if (!value || typeof value !== 'object') return false
+  const item = value as Record<string, unknown>
+  return ['code', 'label', 'sourceUrl'].every(key => typeof item[key] === 'string' && item[key] !== '')
+    && typeof item.unit === 'string' && typeof item.note === 'string'
+    && (item.value === null || typeof item.value === 'string' || typeof item.value === 'boolean'
+      || (typeof item.value === 'number' && Number.isFinite(item.value))
+      || (Array.isArray(item.value) && item.value.every(entry => typeof entry === 'string')))
+}
+export async function loadProduct(id: string, signal: AbortSignal): Promise<ProductDetail> {
+  const response = await fetch(`/api/products/${encodeURIComponent(id)}`, { signal, headers: { Accept: 'application/json' } })
+  if (!response.ok) {
+    const messages: Record<number, string> = {
+      400: '商品 ID 无效，请返回列表重新选择。',
+      404: '商品不存在，请返回列表重新选择。',
+      409: '商品已下架，请返回列表重新选择。',
+    }
+    throw new ProductRequestError(messages[response.status] ?? '商品详情暂时不可用，请稍后重试。', response.status >= 500)
+  }
+  const body: unknown = await response.json()
+  if (!body || typeof body !== 'object' || !('data' in body) || !body.data || typeof body.data !== 'object') {
+    throw new Error('商品详情数据格式异常，请稍后重试。')
+  }
+  const detail = body.data as Record<string, unknown>
+  if (!isProduct(detail.product) || detail.product.id !== Number(id)
+      || typeof detail.description !== 'string' || !detail.description
+      || typeof detail.dataVersion !== 'string' || !detail.dataVersion
+      || !Array.isArray(detail.parameters) || !detail.parameters.length || !detail.parameters.every(isParameter)) {
+    throw new Error('商品详情数据格式异常，请稍后重试。')
+  }
+  return detail as unknown as ProductDetail
+}
+export function formatParameter(parameter: ProductParameter): string {
+  const value = parameter.value
+  if (value === null) return '未核验'
+  if (typeof value === 'boolean') return value ? '有' : '无'
+  return `${Array.isArray(value) ? value.join('、') : value}${parameter.unit ? ` ${parameter.unit}` : ''}`
+}
+export function imageFallback(event: Event) {
+  const image = event.target as HTMLImageElement
+  if (!image.src.endsWith('/images/fallback.svg')) image.src = '/images/fallback.svg'
 }
 const currency = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 export const formatPrice = (price: string) => currency.format(Number(price))
