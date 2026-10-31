@@ -176,5 +176,8 @@ a { color: inherit; text-decoration: none; }
 .admin-slots { display: grid; gap: 10px; }.admin-slots > div { display: grid; grid-template-columns: 1.5fr 1fr 1fr auto; gap: 5px; font-size: 11px; }
 .admin-form-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 18px 0 2px; border-top: 1px solid #e1e9f4; }.admin-form-actions .el-button + .el-button { margin-left: 0; }.admin-form-actions span { font-size: 11px; }
 .admin-dialog.el-dialog { margin-top: 4vh; margin-bottom: 4vh; }.admin-dialog .el-dialog__body { max-height: 80vh; overflow-y: auto; }
+.user-identity { line-height: 1.6; }.user-identity dd { overflow-wrap: anywhere; }
+.user-status-confirmation { margin: 18px 0; padding: 16px; border: 1px solid #e4d7bd; border-radius: 8px; background: #fffbf3; color: #725325; }
+.user-status-confirmation p { margin: 0 0 14px; line-height: 1.7; }
 .admin-form-actions { position: sticky; bottom: -1px; background: #fff; padding-bottom: 14px; z-index: 1; }
 @media (max-width: 640px) { .account-bar-inner { gap: 12px; } .admin-layout { grid-template-columns: 110px minmax(0, 1fr); } .admin-content { padding: 15px; } .admin-module-grid { grid-template-columns: 1fr; } }

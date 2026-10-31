@@ -162,7 +162,8 @@ class CatalogAdministrationTest {
         String path = "/api/admin/products/" + id;
         int originalAudits = data(get(admin,path + "/audit")).size();
         String trigger = "fault_" + prefix;
-        long maximumId = db.queryForObject("SELECT MAX(object_id) FROM admin_audit",Long.class);
+        // Object IDs belong to independent PRODUCT/USER namespaces in the shared audit table.
+        long maximumId = db.queryForObject("SELECT MAX(object_id) FROM admin_audit WHERE object_type='PRODUCT'",Long.class);
         db.execute("ALTER TABLE admin_audit ADD CONSTRAINT " + trigger + " CHECK (actor_username <> '" + prefix
                 + "' OR (object_id <= " + maximumId + " AND (object_id <> " + id + " OR action='CREATE')))");
         try {

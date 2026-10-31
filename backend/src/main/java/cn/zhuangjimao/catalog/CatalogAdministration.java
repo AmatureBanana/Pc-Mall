@@ -97,13 +97,9 @@ class CatalogAdministration {
     }
 
     @Transactional(readOnly = true)
-    public List<Map<String,Object>> audit(long id) throws Exception {
+    public List<AdministrationAudit.Entry> audit(long id) throws Exception {
         detail(id);
-        List<Map<String,Object>> result = new ArrayList<>();
-        for (var entry : admin.audit(id)) result.add(Map.of("id",entry.id(),"actorId",entry.actorId(),"actorUsername",entry.actorUsername(),
-                "objectType",entry.objectType(),"objectId",entry.objectId(),"action",entry.action(),"occurredAt",entry.occurredAt(),
-                "beforeValue",json.readTree(entry.beforeValue()),"afterValue",json.readTree(entry.afterValue())));
-        return result;
+        return audit.history("PRODUCT", id);
     }
 
     private void lock(long id, JsonNode input) {

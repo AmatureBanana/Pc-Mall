@@ -37,11 +37,4 @@ interface CatalogAdministrationMapper {
     void edit(long id, CatalogAdministration.Fields fields);
     @Update("UPDATE products SET status=#{status},revision=revision+1 WHERE id=#{id}")
     void status(long id, String status);
-    @Select("""
-        SELECT id,actor_id,actor_username,object_type,object_id,action,occurred_at,before_value,after_value
-        FROM admin_audit WHERE object_type='PRODUCT' AND object_id=#{id} ORDER BY id DESC LIMIT 100
-        """)
-    List<AuditEntry> audit(long id);
-    record AuditEntry(long id, long actorId, String actorUsername, String objectType, long objectId, String action,
-                      java.time.LocalDateTime occurredAt, String beforeValue, String afterValue) {}
 }

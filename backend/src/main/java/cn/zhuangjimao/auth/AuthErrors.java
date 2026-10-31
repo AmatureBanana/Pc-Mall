@@ -20,6 +20,11 @@ class AuthErrors {
         return ResponseEntity.badRequest().body(new Error("INVALID_INPUT", "请求格式或字段类型无效。"));
     }
 
+    @ExceptionHandler(org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class)
+    ResponseEntity<Error> invalidArgument() {
+        return ResponseEntity.badRequest().body(new Error("INVALID_INPUT", "用户 ID、分页或筛选条件无效。"));
+    }
+
     @ExceptionHandler(DataAccessException.class)
     ResponseEntity<Error> unavailable() {
         return ResponseEntity.status(503).body(new Error("AUTH_UNAVAILABLE", "账户服务暂时不可用，请稍后重试。"));

@@ -12,7 +12,7 @@
 | `POST /api/account/profile` | 已认证＋CSRF；只接受字符串 `nickname`，200返回更新后的本人摘要；超过30个Unicode字符、未配对代理字符、缺失字段、非字符串或额外字段为400 |
 | `POST /api/account/password` | 已认证＋CSRF；只接受 `oldPassword`、`newPassword`、`confirmPassword`；成功200并要求重新登录；旧密码错误400/`CURRENT_PASSWORD_INCORRECT`，其他输入错误400/`INVALID_INPUT` |
 | `POST /api/auth/logout` | CSRF；200，当前Session失效、Cookie删除，重复退出保持已退出状态 |
-| `GET /api/admin/overview` | ADMIN；返回三个基础导航模块，实际维护功能后续接入 |
+| `GET /api/admin/overview` | ADMIN；返回三个导航模块，商品维护与普通用户启禁已接入，订单由后续任务交付 |
 
 账号哈希不出现在任何业务响应中，注册成功响应只含提示。登录显式执行Session ID更换、CSRF令牌废弃与SecurityContext保存。浏览器每次写入前重新取令牌，以返回的headerName发送；保留Spring Security默认的Session令牌仓库与XOR掩码，不关闭CSRF。旧令牌不能跨登录使用；退出后的旧Cookie不能恢复身份。GET响应沿用Spring Security的no-store头，前端也显式禁用认证请求缓存。
 
