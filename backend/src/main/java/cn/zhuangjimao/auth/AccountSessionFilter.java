@@ -10,7 +10,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-/** Re-check account state so disabling an account also revokes existing sessions. */
+/** Re-check account state and credentials so disabled accounts and old sessions lose access. */
 final class AccountSessionFilter extends OncePerRequestFilter {
     private final AccountMapper accounts;
     AccountSessionFilter(AccountMapper accounts) { this.accounts = accounts; }
@@ -26,7 +26,7 @@ final class AccountSessionFilter extends OncePerRequestFilter {
                 WebSecurity.json(response, 503, "AUTH_UNAVAILABLE", "账户服务暂时不可用，请稍后重试。");
                 return;
             }
-            if (account == null || !account.status().equals("ACTIVE")) {
+            if (!(auth.getPrincipal() instanceof AccountPrincipal principal) || !principal.matches(account)) {
                 var session = request.getSession(false);
                 if (session != null) session.invalidate();
                 SecurityContextHolder.clearContext();

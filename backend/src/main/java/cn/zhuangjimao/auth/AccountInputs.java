@@ -21,12 +21,12 @@ final class AccountInputs {
     }
 
     static String nickname(String nickname, String username) {
-        if (nickname == null || nickname.isBlank()) return username;
+        if (nickname == null) return username;
         if (nickname.codePointCount(0, nickname.length()) > 30
                 || nickname.codePoints().anyMatch(c -> c >= 0xD800 && c <= 0xDFFF)) {
             throw invalid("昵称最多 30 个字符。");
         }
-        return nickname;
+        return nickname.isBlank() ? username : nickname;
     }
 
     static AuthException invalid(String message) { return new AuthException(400, "INVALID_INPUT", message); }

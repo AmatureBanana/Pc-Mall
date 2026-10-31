@@ -29,13 +29,23 @@ function account(value: unknown): Account {
 }
 
 export async function currentAccount() { return account(await request('/api/auth/me')) }
+export async function currentProfile() { return account(await request('/api/account/profile')) }
 
-export async function writeAuth(action: 'register' | 'login' | 'logout', body: unknown) {
+async function write(path: string, body: unknown) {
   const value = await request('/api/auth/csrf')
   if (!value || typeof value !== 'object' || !('token' in value) || typeof value.token !== 'string'
       || !('headerName' in value) || typeof value.headerName !== 'string') throw new Error('安全凭证获取失败，请重试。')
-  return request(`/api/auth/${action}`, { method: 'POST',
+  return request(path, { method: 'POST',
     headers: { 'Content-Type': 'application/json', [value.headerName]: value.token }, body: JSON.stringify(body) })
+}
+export async function writeAuth(action: 'register' | 'login' | 'logout', body: unknown) {
+  return write(`/api/auth/${action}`, body)
+}
+export async function updateNickname(nickname: string) {
+  return account(await write('/api/account/profile', { nickname }))
+}
+export async function changePassword(oldPassword: string, newPassword: string, confirmPassword: string) {
+  await write('/api/account/password', { oldPassword, newPassword, confirmPassword })
 }
 export async function loginAccount(username: string, password: string) {
   return account(await writeAuth('login', { username, password }))

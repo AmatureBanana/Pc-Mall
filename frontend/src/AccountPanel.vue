@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElButton, ElDialog } from 'element-plus'
 import { adminModules, AuthError, currentAccount, loginAccount, writeAuth, type Account, type AdminModule } from './auth'
+import ProfilePanel from './ProfilePanel.vue'
 
 const user = ref<Account | null>(null)
 const route = ref('')
@@ -15,6 +16,7 @@ const notice = ref('')
 const sessionError = ref('')
 const modules = ref<AdminModule[]>([])
 const adminLoading = ref(false)
+const profileBusy = ref(false)
 const selectedModule = computed(() => modules.value.find(item => item.code === route.value.split('/')[1]))
 const authOpen = computed(() => route.value === 'login' || route.value === 'register')
 const adminOpen = computed(() => route.value === 'admin' || route.value.startsWith('admin/'))
@@ -29,7 +31,7 @@ function feedback(cause: unknown) {
   if (cause instanceof AuthError && cause.status === 401) { identityRevision++; user.value = null }
 }
 async function checkSession() {
-  if (busy.value) return
+  if (busy.value || profileBusy.value) return
   const revision = ++identityRevision
   try {
     const account = await currentAccount()
@@ -80,7 +82,7 @@ async function submit() {
   finally { busy.value = false }
 }
 async function logout() {
-  if (busy.value) return
+  if (busy.value || profileBusy.value) return
   identityRevision++
   busy.value = true
   sessionError.value = ''
@@ -88,10 +90,23 @@ async function logout() {
   catch (cause) { sessionError.value = cause instanceof Error ? cause.message : '退出失败，请重试。' }
   finally { busy.value = false }
 }
+function profileUpdated(account: Account) {
+  identityRevision++
+  user.value = account
+  sessionError.value = ''
+}
+function profileExpired() { identityRevision++; user.value = null }
+function passwordChanged() {
+  profileExpired()
+  clearSecrets()
+  sessionError.value = ''
+  navigate('login')
+  notice.value = '密码修改成功，旧会话已失效，请重新登录。'
+}
 watch(route, (next, previous) => {
   clearSecrets()
   error.value = ''
-  if (!(previous === 'register' && next === 'login')) notice.value = ''
+  if (!((previous === 'register' || previous === 'profile') && next === 'login')) notice.value = ''
   if (next === 'admin' || next.startsWith('admin/')) void loadAdmin()
   else adminRevision++
 })
@@ -105,7 +120,8 @@ onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.
     <span v-if="user" class="account-name">{{ user.nickname }} <small>{{ user.role === 'ADMIN' ? '管理员' : '普通用户' }}</small></span>
     <template v-else><button @click="navigate('login')">登录</button><button @click="navigate('register')">注册</button></template>
     <button v-if="user?.role === 'ADMIN'" @click="navigate('admin')">管理后台</button>
-    <button v-if="user" :disabled="busy" @click="logout">退出登录</button>
+    <button v-if="user" @click="navigate('profile')">个人资料</button>
+    <button v-if="user" :disabled="busy || profileBusy" @click="logout">退出登录</button>
     <span v-if="sessionError" role="alert" class="account-session-error">{{ sessionError }} <button @click="checkSession">重试</button></span>
     <span v-else-if="notice && !authOpen" role="status">{{ notice }}</span>
   </div></div>
@@ -123,6 +139,8 @@ onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.
     </form>
     <p class="auth-switch"><button :disabled="busy" @click="navigate(route === 'register' ? 'login' : 'register')">{{ route === 'register' ? '已有账户？去登录' : '还没有账户？去注册' }}</button></p>
   </ElDialog>
+
+  <ProfilePanel v-if="route === 'profile'" @updated="profileUpdated" @expired="profileExpired" @password-changed="passwordChanged" @busy="profileBusy = $event"/>
 
   <ElDialog :model-value="adminOpen" title="管理后台" width="900px" class="admin-dialog" @close="adminOpen && navigate()">
     <p v-if="adminLoading" role="status">正在验证后台权限…</p>

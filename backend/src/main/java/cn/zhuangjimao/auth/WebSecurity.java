@@ -9,7 +9,6 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -39,8 +38,7 @@ class WebSecurity {
         var provider = new DaoAuthenticationProvider(username -> {
             var account = accounts.byUsername(username);
             if (account == null) throw new UsernameNotFoundException("Invalid credentials");
-            return User.withUsername(account.username()).password(account.passwordHash())
-                    .roles(account.role()).disabled(!account.status().equals("ACTIVE")).build();
+            return new AccountPrincipal(account);
         });
         provider.setPasswordEncoder(passwords);
         return new ProviderManager(provider);
