@@ -119,3 +119,33 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 640px) { .page-width { width: calc(100% - 28px); } .header-inner { flex-wrap: wrap; gap: 12px; padding-block: 16px; } .brand { font-size: 24px; gap: 10px; } .brand-mark { width: 34px; height: 36px; } .search { flex-basis: 100%; height: 43px; } .search .search-button { height: 43px; padding-inline: 12px; } .search input { font-size: 12px; } .nav-inner { height: 58px; } .nav-inner button { height: 48px; min-width: 92px; font-size: 13px; } .nav-inner button:first-child { min-width: 120px; } .nav-inner button svg { width: 21px; height: 21px; } .main { display: block; padding-top: 16px; } .sidebar { display: none; } .catalog-toolbar { padding-inline: 0; } .demo-label { margin-left: 8px; padding-left: 8px; } .product-grid { gap: 10px; } .product-image { height: 142px; padding: 10px; } .product-info { padding: 8px 11px 14px; } .product-info h2 { font-size: 12px; } .product-meta { font-size: 10px; margin-bottom: 9px; } .product-bottom { flex-wrap: wrap; gap: 5px; } .product-price { font-size: 18px; } .stock { font-size: 10px; } .catalog-note { text-align: left; } .footer-inner { min-height: 72px; gap: 14px; } .footer-brand { font-size: 15px; } .footer p { font-size: 10px; max-width: 190px; } .state-panel { padding: 20px; min-height: 370px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
 @media (max-width: 640px) { .product-info h2 { white-space: normal; min-height: 36px; line-height: 18px; } }
+.account-bar { background: #edf3fc; border-bottom: 1px solid #e1eaf7; font-size: 12px; color: #657e9f; }
+.account-bar-inner { min-height: 36px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding-block: 5px; }
+.account-welcome { margin-right: auto; }
+.account-bar button, .auth-switch button { border: 0; background: transparent; color: #216dd5; padding: 4px 0; font: inherit; cursor: pointer; }
+.account-bar button:disabled { opacity: .5; cursor: wait; }
+.account-name { color: #284568; }
+.account-name small { color: #879ab3; margin-left: 6px; }
+.account-session-error { color: #b13c51; }
+.auth-dialog, .admin-dialog { border-radius: 12px; max-width: calc(100vw - 32px); }
+.auth-intro { color: #7c8ea6; margin: 0 0 20px; font-size: 13px; }
+.auth-form { display: grid; gap: 17px; }
+.auth-form label { display: grid; gap: 7px; font-size: 13px; color: #36516f; }
+.auth-form input { height: 42px; border: 1px solid #d5e0ee; border-radius: 6px; padding: 0 11px; color: #19304f; width: 100%; box-sizing: border-box; font: inherit; background: #fafcff; }
+.auth-form input:focus { outline: 2px solid #bad4ff; border-color: #4389ec; }
+.auth-form small { font-size: 11px; color: #8799af; line-height: 1.5; }
+.auth-form .el-button { width: 100%; height: 43px; margin-top: 5px; }
+.auth-switch { margin: 18px 0 0; text-align: center; font-size: 13px; }
+.auth-error { background: #fff0f2; border: 1px solid #f5d5dc; border-radius: 6px; color: #b13c51; padding: 12px; line-height: 1.7; font-size: 13px; }
+.auth-success { background: #eef9f3; border-radius: 6px; color: #248250; padding: 12px; }
+.admin-layout { display: grid; grid-template-columns: 160px minmax(0, 1fr); min-height: 280px; border: 1px solid #e7edf5; border-radius: 8px; overflow: hidden; }
+.admin-layout nav { display: flex; flex-direction: column; background: #f4f7fc; padding: 14px 8px; gap: 6px; }
+.admin-layout nav button { background: transparent; border: 0; padding: 13px 18px; text-align: left; color: #536c8c; border-radius: 6px; }
+.admin-layout nav button.active { color: #216dd5; background: #e0ecff; font-weight: 600; }
+.admin-content { padding: 24px; color: #72869f; }
+.admin-content h2 { margin: 0 0 16px; font-size: 20px; color: #234268; }
+.admin-module-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 26px; }
+.admin-module-grid button { border: 1px solid #dce7f5; border-radius: 7px; background: #fafcff; padding: 18px 12px; text-align: left; color: #32577f; }
+.admin-module-grid span { display: block; margin-top: 12px; font-size: 12px; line-height: 1.7; color: #8b9ab0; }
+.admin-availability { padding: 16px; background: #f3f7fc; border-radius: 6px; margin-block: 25px; }
+@media (max-width: 640px) { .account-bar-inner { gap: 12px; } .admin-layout { grid-template-columns: 110px minmax(0, 1fr); } .admin-content { padding: 15px; } .admin-module-grid { grid-template-columns: 1fr; } }

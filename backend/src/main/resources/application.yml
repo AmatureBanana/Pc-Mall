@@ -1,6 +1,14 @@
 server:
   address: 127.0.0.1
   port: ${PORT:8080}
+  servlet:
+    session:
+      timeout: 2h
+      tracking-modes: cookie
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${SESSION_COOKIE_SECURE:false}
 spring:
   application:
     name: pc-mall
@@ -22,3 +30,12 @@ spring:
 mybatis:
   configuration:
     map-underscore-to-camel-case: true
+mall:
+  login-limit:
+    max-keys: ${LOGIN_MAX_KEYS:10000}
+    max-failures: ${LOGIN_MAX_FAILURES:5}
+    window: ${LOGIN_FAILURE_WINDOW:15m}
+    lock-duration: ${LOGIN_LOCK_DURATION:15m}
+  bootstrap:
+    username: ${ADMIN_BOOTSTRAP_USERNAME:}
+    password: ${ADMIN_BOOTSTRAP_PASSWORD:}

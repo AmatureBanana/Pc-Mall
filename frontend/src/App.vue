@@ -4,6 +4,7 @@ import { ElButton, ElEmpty, ElSkeleton } from 'element-plus'
 import HardwareIcon from './HardwareIcon.vue'
 import StoreBrand from './StoreBrand.vue'
 import ProductDetail from './ProductDetail.vue'
+import AccountPanel from './AccountPanel.vue'
 import { categories, formatPrice, imageFallback, loadProducts, type Category } from './catalog'
 import { useCatalogRequest } from './useCatalogRequest'
 
@@ -59,6 +60,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
 
 <template>
   <div class="storefront">
+    <AccountPanel/>
     <header class="header"><div class="header-inner page-width">
       <StoreBrand/>
       <p class="tagline">专业 · 可靠 · 用心的电脑硬件商城</p>
