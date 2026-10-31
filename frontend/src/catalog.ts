@@ -15,8 +15,9 @@ export interface Product {
   brand: string; model: string; summary: string; imageUrl: string; price: string; stock: number
   sourceUrl: string; priceNote: string
 }
+export interface ProductSlot { formFactor: string; interface: string; protocol: string }
 export interface ProductParameter {
-  code: string; label: string; value: string | number | boolean | string[] | null
+  code: string; label: string; value: string | number | boolean | string[] | ProductSlot[] | null
   unit: string; sourceUrl: string; note: string
 }
 export interface ProductDetail {
@@ -51,11 +52,14 @@ export class ProductRequestError extends Error {
 function isParameter(value: unknown): value is ProductParameter {
   if (!value || typeof value !== 'object') return false
   const item = value as Record<string, unknown>
-  return ['code', 'label', 'sourceUrl'].every(key => typeof item[key] === 'string' && item[key] !== '')
+  return ['code', 'label'].every(key => typeof item[key] === 'string' && item[key] !== '')
+    && typeof item.sourceUrl === 'string' && (item.value === null || item.sourceUrl !== '')
     && typeof item.unit === 'string' && typeof item.note === 'string'
     && (item.value === null || typeof item.value === 'string' || typeof item.value === 'boolean'
       || (typeof item.value === 'number' && Number.isFinite(item.value))
-      || (Array.isArray(item.value) && item.value.every(entry => typeof entry === 'string')))
+      || (Array.isArray(item.value) && item.value.every(entry => typeof entry === 'string'
+        || item.code === 'ssdSlots' && entry && typeof entry === 'object'
+          && ['formFactor', 'interface', 'protocol'].every(key => typeof entry[key] === 'string'))))
 }
 export async function loadProduct(id: string, signal: AbortSignal): Promise<ProductDetail> {
   const response = await fetch(`/api/products/${encodeURIComponent(id)}`, { signal, headers: { Accept: 'application/json' } })
@@ -84,7 +88,7 @@ export function formatParameter(parameter: ProductParameter): string {
   const value = parameter.value
   if (value === null) return '未核验'
   if (typeof value === 'boolean') return value ? '有' : '无'
-  return `${Array.isArray(value) ? value.join('、') : value}${parameter.unit ? ` ${parameter.unit}` : ''}`
+  return `${Array.isArray(value) ? value.map(entry => typeof entry === 'string' ? entry : `${entry.formFactor} · ${entry.interface} · ${entry.protocol}`).join('、') || '无' : value}${parameter.unit ? ` ${parameter.unit}` : ''}`
 }
 export function imageFallback(event: Event) {
   const image = event.target as HTMLImageElement

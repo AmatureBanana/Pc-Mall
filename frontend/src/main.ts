@@ -4,6 +4,9 @@ import 'element-plus/es/components/button/style/css'
 import 'element-plus/es/components/empty/style/css'
 import 'element-plus/es/components/dialog/style/css'
 import 'element-plus/es/components/skeleton/style/css'
+import 'element-plus/es/components/table/style/css'
+import 'element-plus/es/components/pagination/style/css'
+import 'element-plus/es/components/tag/style/css'
 import './style.css'
 
 createApp(App).mount('#app')

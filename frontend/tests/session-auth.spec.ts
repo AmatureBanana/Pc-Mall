@@ -60,7 +60,8 @@ test('administrator uses the unified login and can navigate every administration
   for (const title of ['商品管理', '用户管理', '订单管理']) {
     await admin.getByRole('navigation', { name: '后台模块' }).getByRole('button', { name: title }).click()
     await expect(admin.getByRole('heading', { name: title })).toBeVisible()
-    await expect(admin.getByRole('status')).toContainText('即将开放')
+    if (title === '商品管理') await expect(admin.getByRole('button', { name: '新增商品' })).toBeVisible()
+    else await expect(admin.getByRole('status')).toContainText('即将开放')
   }
   await admin.getByRole('navigation').getByRole('button', { name: '后台概览' }).click()
   await expect(admin.getByRole('heading', { name: '商城管理中心' })).toBeVisible()

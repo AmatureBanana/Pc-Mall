@@ -6,7 +6,7 @@ export class AuthError extends Error {
   constructor(message: string, readonly status: number) { super(message) }
 }
 
-async function request(path: string, init?: RequestInit): Promise<unknown> {
+export async function request(path: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(path, { credentials: 'same-origin', cache: 'no-store', ...init })
   const body: unknown = await response.json()
   if (!response.ok) {
@@ -31,7 +31,7 @@ function account(value: unknown): Account {
 export async function currentAccount() { return account(await request('/api/auth/me')) }
 export async function currentProfile() { return account(await request('/api/account/profile')) }
 
-async function write(path: string, body: unknown) {
+export async function write(path: string, body: unknown) {
   const value = await request('/api/auth/csrf')
   if (!value || typeof value !== 'object' || !('token' in value) || typeof value.token !== 'string'
       || !('headerName' in value) || typeof value.headerName !== 'string') throw new Error('安全凭证获取失败，请重试。')

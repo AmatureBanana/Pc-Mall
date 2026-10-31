@@ -1,6 +1,6 @@
 # 装机猫 · 电脑硬件商城
 
-任务 01～04：从空 MySQL 库经 Flyway 迁移、MyBatis 查询、公开 HTTP 接口，到 Vue 商品页面；支持八类硬件查询、搜索、详情，以及注册、Session 登录、CSRF、个人资料、昵称修改、改密撤销旧会话和后台角色准入。
+任务 01～05：从空 MySQL 库经 Flyway 迁移、MyBatis 查询、公开 HTTP 接口，到 Vue 商品页面；支持八类硬件查询、搜索、详情，以及注册、Session 登录、CSRF、个人资料、昵称修改、改密撤销旧会话、后台商品草稿、分类参数、上下架及原子审计。
 
 ## 环境与依赖
 
@@ -31,7 +31,7 @@ $env:MAVEN_USER_HOME = "$PWD\.local\maven-user"
 ./scripts/local-db.ps1 stop
 ```
 
-应用启动时自动运行版本化 SQL：V1 建表、V2 导入 12 个型号、V3 修正机箱来源、V4 增加分类参数、V5～V7 建立账号与初始化锁及更新时间、V8 增加改密撤销会话的凭据版本。Flyway 校验历史且禁用 clean，重复启动不重复导入；不要编辑已执行的迁移，应新增版本。参数契约见 [docs/catalog-parameters.md](docs/catalog-parameters.md)。
+应用启动时自动运行版本化 SQL：V1 建表、V2 导入 12 个型号、V3 修正机箱来源、V4 增加分类参数、V5～V7 建立账号与初始化锁及更新时间、V8 增加改密撤销会话的凭据版本、V9 增加商品版本与共享审计、V10 显式记录两款主板既有的SSD有效安装组合。Flyway 校验历史且禁用 clean，重复启动不重复导入；不要编辑已执行的迁移，应新增版本。参数契约见 [docs/catalog-parameters.md](docs/catalog-parameters.md)。
 
 ## 开发启动
 
@@ -103,6 +103,7 @@ MySQL 就绪、前端依赖已安装后，在仓库根目录运行（测试脚�
 ./mvnw.cmd -Dtest=CatalogFailureTest test
 ./mvnw.cmd -Dtest=SessionAuthTest test
 ./mvnw.cmd -Dtest=ProfilePasswordTest test
+./mvnw.cmd -Dtest=CatalogAdministrationTest test
 cd frontend
 npm.cmd run typecheck
 npm.cmd test -- --grep 'guest sees'
@@ -112,7 +113,9 @@ npm.cmd test -- --grep 'guest sees'
 
 ## 注册、登录与管理员
 
-商城顶部提供注册和统一登录。注册只创建普通用户，成功后进入登录；登录按服务端角色进入商城或后台。后台提供商品、用户、订单的基础导航；维护功能由后续任务接入。用户可直接打开 `/#login`、`/#register`、`/#admin`，权限仍由后端检查。
+商城顶部提供注册和统一登录。注册只创建普通用户，成功后进入登录；登录按服务端角色进入商城或后台。后台商品管理已可分页筛选、创建草稿、编辑八类参数及上下架；用户、订单模块保留基础导航。用户可直接打开 `/#login`、`/#register`、`/#admin`，权限仍由后端检查。
+
+管理员进入“商品管理”或 `/#admin/products`，新增时设置固定SKU、类别和可选初始售价；保存后补充资料与分类参数，全部必要条件满足后再上架。默认库存0，调价与库存调整由任务07接入；SKU和类别创建后不可修改。编辑、上下架与审计原子提交，遇到并发冲突请重新载入。接口、单位、来源与审计复用说明见[商品管理契约](docs/catalog-administration.md)，验证见[任务05记录](docs/evidence/task-05.md)。
 
 登录后点击“个人资料”或打开 `/#profile`，可查看本人资料、修改最多30个Unicode字符的昵称。修改密码须填写旧密码、新密码和确认新密码；成功后全部旧会话失效，页面转到登录并清空密码输入。新密码为8～64个Unicode字符且UTF-8不超过72字节；旧密码错误或其他校验失败时，原密码与有效会话保持可用。
 
@@ -130,4 +133,4 @@ npm.cmd test -- --grep 'guest sees'
 
 `GET /api/products/{id}` 返回 `data: {product, description, parameters, dataVersion}`，其中 product 保留真实ID、销售SKU、类别、品牌、型号、图片地址、两位小数金额字符串、库存与来源说明，parameters 保留有类型数值、集合、单位和逐字段来源。详情读取同一数据库来源，在只读事务中形成一致快照；不缓存价格、库存或上下架状态。不合法ID为400/`INVALID_PRODUCT_ID`，不存在为404/`PRODUCT_NOT_FOUND`，下架为409/`PRODUCT_NOT_SELECTABLE`；缺货仍能查看并显示“暂时缺货”。服务失败为503/500，不转换为空列表。
 
-点击商品名称或图片打开详情，`/#product/7`这样的链接可直接打开并刷新；弹窗提供价格库存刷新、错误重试和关闭操作。类别及关键词走真实后端，价格范围与排序继续对当前查询结果做便捷筛选。账号接口、Session/CSRF、个人资料与改密和后台准入已接入；其他路径默认拒绝。DIY工作区、兼容规则、购物车、订单、推荐与后台维护由后续任务实现。
+点击商品名称或图片打开详情，`/#product/7`这样的链接可直接打开并刷新；弹窗提供价格库存刷新、错误重试和关闭操作。类别及关键词走真实后端，价格范围与排序继续对当前查询结果做便捷筛选。账号接口、Session/CSRF、个人资料与改密及后台商品维护已接入；其他路径默认拒绝。DIY工作区、兼容规则、购物车、订单、推荐和其余后台维护由后续任务实现。

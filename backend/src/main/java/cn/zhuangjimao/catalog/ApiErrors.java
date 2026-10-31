@@ -40,4 +40,10 @@ class ApiErrors {
     }
 
     record ApiError(String code, String message) {}
+
+    @ExceptionHandler({org.springframework.http.converter.HttpMessageNotReadableException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class})
+    ResponseEntity<ApiError> malformed() {
+        return ResponseEntity.badRequest().body(new ApiError("INVALID_PRODUCT", "请求格式、字段类型或必要条件无效。"));
+    }
 }
