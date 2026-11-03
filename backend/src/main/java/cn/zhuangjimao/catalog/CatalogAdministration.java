@@ -16,9 +16,10 @@ class CatalogAdministration {
     private final ProductMapper products;
     private final ObjectMapper json;
     private final AdministrationAudit audit;
+    private final InventoryMapper inventory;
 
-    CatalogAdministration(CatalogAdministrationMapper admin, ProductMapper products, ObjectMapper json, AdministrationAudit audit) {
-        this.admin = admin; this.products = products; this.json = json; this.audit = audit;
+    CatalogAdministration(CatalogAdministrationMapper admin, ProductMapper products, ObjectMapper json, AdministrationAudit audit, InventoryMapper inventory) {
+        this.admin = admin; this.products = products; this.json = json; this.audit = audit; this.inventory = inventory;
     }
 
     @Transactional(readOnly = true)
@@ -38,7 +39,7 @@ class CatalogAdministration {
         var spec = products.findSpecification(id);
         return new Detail(product, spec == null ? "" : spec.description(),
                 spec == null ? json.createArrayNode() : json.readTree(spec.parameters()),
-                spec == null ? "admin-v1" : spec.dataVersion(), admin.revision(id));
+                spec == null ? "admin-v1" : spec.dataVersion(), admin.revision(id), admin.reservedStock(id));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -102,6 +103,50 @@ class CatalogAdministration {
         return audit.history("PRODUCT", id);
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public Detail changePrice(long id, JsonNode input, String actor) throws Exception {
+        requireFields(input, Set.of("revision", "price", "reason"));
+        if (!input.has("price")) invalid("请填写售价。");
+        BigDecimal price = price(input);
+        String reason = reason(input);
+        lock(id, input);
+        var before = detail(id);
+        if (before.product().price().compareTo(price) == 0) return before;
+        if (admin.price(id, before.revision(), price) != 1) conflict();
+        var result = detail(id);
+        audit.record(actor, "PRODUCT", id, "PRICE",
+                Map.of("price", before.product().price().toPlainString(), "revision", before.revision()),
+                Map.of("price", price.toPlainString(), "revision", result.revision(), "reason", reason));
+        return result;
+    }
+
+    static String reason(JsonNode input) {
+        String reason = text(input, "reason", 500);
+        if (reason.isBlank()) invalid("请填写调整原因。");
+        return reason;
+    }
+    @Transactional(rollbackFor = Exception.class)
+    public Detail adjustStock(long id, JsonNode input, String actor) throws Exception {
+        requireFields(input, Set.of("delta", "reason"));
+        var delta = input.get("delta");
+        if (delta == null || !delta.isIntegralNumber() || !delta.canConvertToInt() || delta.intValue() == 0)
+            invalid("库存增减量须为非零整数。");
+        String reason = reason(input);
+        if (admin.lock(id) == null) throw new CatalogException(HttpStatus.NOT_FOUND,"PRODUCT_NOT_FOUND","商品不存在。");
+        var before = detail(id);
+        if (inventory.change(id, before.revision(), delta.intValue(), 0) != 1)
+            throw new CatalogException(HttpStatus.CONFLICT,"STOCK_CONFLICT","可售库存不足或调整后库存超出范围，请重新载入。");
+        var result = detail(id);
+        audit.record(actor, "PRODUCT", id, "STOCK",
+                Map.of("stock", before.product().stock(), "reservedStock", before.reservedStock(), "revision", before.revision()),
+                Map.of("stock", result.product().stock(), "reservedStock", result.reservedStock(), "revision", result.revision(),
+                        "delta", delta.intValue(), "reason", reason));
+        return result;
+    }
+    static void conflict() {
+        throw new CatalogException(HttpStatus.CONFLICT,"PRODUCT_CONFLICT","商品已被修改，请重新载入后再操作。");
+    }
+
     private void lock(long id, JsonNode input) {
         var revision = input.get("revision");
         if (revision == null || !revision.isIntegralNumber() || !revision.canConvertToLong() || revision.asLong() < 0) invalid("请提交有效商品 revision。");
@@ -152,6 +197,6 @@ class CatalogAdministration {
     static void invalid(String message) { throw new CatalogException(HttpStatus.BAD_REQUEST, "INVALID_PRODUCT", message); }
     record Fields(String sku, String category, String name, String brand, String model, String summary,
                   String imageUrl, String sourceUrl, String priceNote, BigDecimal price) {}
-    record Detail(Product product, String description, JsonNode parameters, String dataVersion, long revision) {}
+    record Detail(Product product, String description, JsonNode parameters, String dataVersion, long revision, int reservedStock) {}
     record Page(List<Product> items, long total, int page, int size) {}
 }

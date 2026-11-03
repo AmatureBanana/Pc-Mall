@@ -99,6 +99,7 @@ class CatalogAdministrationTest {
         var publicDetail = data(get(browser(), "/api/products/" + id));
         assertThat(publicDetail.path("product").path("name").asText()).isEqualTo("新CPU名称");
         assertThat(publicDetail.path("product").path("price").asText()).isEqualTo("1999.50");
+        assertThat(publicDetail.path("product").path("revision").asLong()).isEqualTo(2);
         edit.put("revision", 2); edit.set("parameters", json.createArrayNode());
         assertThat(post(admin, path, edit).statusCode()).isEqualTo(400);
         for (String protectedField : List.of("sku", "category", "price", "stock", "status", "id")) {

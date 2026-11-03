@@ -4,7 +4,7 @@ import { ElButton, ElPagination, ElTable, ElTableColumn, ElTag } from 'element-p
 import AdminField from './AdminField.vue'
 import { AuthError } from './auth'
 import { categories, formatPrice } from './catalog'
-import { catalogPage, catalogDetail, parameterSchema, saveProduct, changeSaleStatus,
+import { catalogPage, catalogDetail, parameterSchema, saveProduct, changeSaleStatus, changeProductPrice, adjustProductStock,
   type AdminDetail, type AdminPage, type AdminParameter, type ParameterField, type Slot } from './adminCatalog'
 
 const emit = defineEmits<{ expired: [] }>()
@@ -15,6 +15,9 @@ const error = ref(''), notice = ref(''), unauthorized = ref(false)
 const detail = ref<AdminDetail | null>(null), schema = ref<ParameterField[]>([])
 const feedbackElement = ref<HTMLElement | null>(null)
 const parameters = ref<AdminParameter[]>([])
+const newPrice = ref(''), priceReason = ref(''), stockDelta = ref(''), stockReason = ref('')
+let metadataRevision = 0
+let priceRevision = 0
 const form = reactive({ sku: '', category: 'CPU', name: '', brand: '', model: '', summary: '', description: '', imageUrl: '', sourceUrl: '', priceNote: '管理员录入的 CNY 售价', price: '' })
 let revision = 0
 function feedback(cause: unknown) {
@@ -52,11 +55,15 @@ async function open(id: number | null) {
   loading.value = true; editing.value = true; error.value = ''; notice.value = ''; detail.value = null
   Object.assign(form, { sku: '', category: 'CPU', name: '', brand: '', model: '', summary: '', description: '', imageUrl: '', sourceUrl: '', priceNote: '管理员录入的 CNY 售价', price: '' })
   parameters.value = []; schema.value = []
+  newPrice.value = priceReason.value = stockDelta.value = stockReason.value = ''
   try {
     const result = id === null ? null : await catalogDetail(id)
     const fields = await parameterSchema(result?.product.category ?? 'CPU')
     if (current !== revision) return
     detail.value = result
+    metadataRevision = result?.revision ?? 0
+    priceRevision = result?.revision ?? 0
+    newPrice.value = result?.product.price ?? ''
     if (result) Object.assign(form, { ...result.product, description: result.description })
     setParameters(fields, result?.parameters)
   } catch (cause) { if (current === revision) feedback(cause) }
@@ -66,7 +73,7 @@ function payload() {
   const base = { name: form.name, brand: form.brand, model: form.model, summary: form.summary, description: form.description,
     imageUrl: form.imageUrl, sourceUrl: form.sourceUrl, priceNote: form.priceNote, parameters: parameters.value.filter(p =>
       p.value !== null || p.sourceUrl !== '' || p.note !== '' || detail.value?.parameters.some(existing => existing.code === p.code)) }
-  return detail.value ? { ...base, revision: detail.value.revision } : {
+  return detail.value ? { ...base, revision: metadataRevision } : {
     ...base, sku: form.sku, category: form.category, ...(form.price ? { price: form.price } : {}),
   }
 }
@@ -76,6 +83,7 @@ async function save() {
   try {
     const result = await saveProduct(detail.value?.product.id ?? null, payload())
     detail.value = result; setParameters(schema.value, result.parameters)
+    metadataRevision = priceRevision = result.revision; newPrice.value = result.product.price
     notice.value = '保存成功，商品资料与审计已一起提交。'
   } catch (cause) { feedback(cause) }
   finally { busy.value = false }
@@ -84,8 +92,31 @@ async function changeStatus() {
   if (!detail.value || busy.value || loading.value) return
   busy.value = true; error.value = ''; notice.value = ''
   try {
-    detail.value = await changeSaleStatus(detail.value)
+    acceptAdjustment(await changeSaleStatus(detail.value))
     notice.value = detail.value.product.status === 'ON_SALE' ? '商品已上架。' : '商品已下架，历史关联保留。'
+  } catch (cause) { feedback(cause) }
+  finally { busy.value = false }
+}
+function acceptAdjustment(result: AdminDetail) {
+  const previous = detail.value?.revision
+  if (previous !== undefined && (result.revision === previous || result.revision === previous + 1)) {
+    if (metadataRevision === previous) metadataRevision = result.revision
+    if (priceRevision === previous) priceRevision = result.revision
+  }
+  detail.value = result
+}
+async function adjust(kind: 'price' | 'stock') {
+  if (!detail.value || busy.value || loading.value) return
+  busy.value = true; error.value = ''; notice.value = ''
+  try {
+    const result = kind === 'price'
+      ? await changeProductPrice(detail.value.product.id, priceRevision, newPrice.value, priceReason.value)
+      : await adjustProductStock(detail.value.product.id, Number(stockDelta.value), stockReason.value)
+    acceptAdjustment(result)
+    if (kind === 'price') { newPrice.value = result.product.price; priceReason.value = '' }
+    else { stockDelta.value = ''; stockReason.value = '' }
+    notice.value = (kind === 'price' ? '售价已更新' : '可售库存已更新') + '，调整原因与审计已一起保存。'
+    if (metadataRevision !== result.revision) notice.value += ' 商品资料已有其他变更，保存前请重新载入。'
   } catch (cause) { feedback(cause) }
   finally { busy.value = false }
 }
@@ -131,7 +162,17 @@ watch([error, notice], async () => {
       <ElPagination :current-page="page.page" :page-size="page.size" :total="page.total" layout="total, prev, pager, next" :disabled="loading" @current-change="loadPage"/>
     </template>
     <form v-else class="admin-product-form" @submit.prevent="save">
-      <div v-if="detail" class="admin-product-state"><ElTag :type="detail.product.status === 'ON_SALE' ? 'success' : 'info'">{{ detail.product.status === 'ON_SALE' ? '已上架' : '已下架' }}</ElTag><span>商品 #{{ detail.product.id }} · 当前售价 ¥{{ formatPrice(detail.product.price) }} · 可售库存 {{ detail.product.stock }}</span></div>
+      <div v-if="detail" class="admin-product-state"><ElTag :type="detail.product.status === 'ON_SALE' ? 'success' : 'info'">{{ detail.product.status === 'ON_SALE' ? '已上架' : '已下架' }}</ElTag><span>商品 #{{ detail.product.id }} · 当前售价 ¥{{ formatPrice(detail.product.price) }} · 可售库存 {{ detail.product.stock }} · 已预占 {{ detail.reservedStock }}</span></div>
+      <div v-if="detail" class="admin-adjustments">
+        <fieldset :disabled="busy || loading || unauthorized"><legend>调整售价</legend><p>售价以人民币计，最多两位小数。调整后立即用于新的商品查询。</p>
+          <AdminField v-model="newPrice" label="新售价（元）" :maxlength="13"/><AdminField v-model="priceReason" label="调价原因" :maxlength="500"/>
+          <ElButton :disabled="busy || loading || unauthorized" @click="adjust('price')">确认调价</ElButton>
+        </fieldset>
+        <fieldset :disabled="busy || loading || unauthorized"><legend>调整可售库存</legend><p>正数增加、负数减少；已预占数量单独保留。请填写本次增减量。</p>
+          <AdminField v-model="stockDelta" label="库存增减量" :maxlength="11"/><AdminField v-model="stockReason" label="库存调整原因" :maxlength="500"/>
+          <ElButton :disabled="busy || loading || unauthorized" @click="adjust('stock')">确认调整库存</ElButton>
+        </fieldset>
+      </div>
       <fieldset :disabled="busy || loading || unauthorized || schema.length === 0">
         <legend>商品资料</legend><div class="admin-base-grid">
           <AdminField v-model="form.sku" label="销售 SKU" :disabled="detail !== null" :maxlength="80" required/>

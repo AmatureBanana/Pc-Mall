@@ -11,7 +11,7 @@ export interface AdminParameter {
   code: string; label: string; value: string | number | boolean | string[] | Slot[] | null
   unit: string; sourceUrl: string; note: string
 }
-export interface AdminDetail { product: AdminProduct; description: string; parameters: AdminParameter[]; revision: number; dataVersion: string }
+export interface AdminDetail { product: AdminProduct; description: string; parameters: AdminParameter[]; revision: number; dataVersion: string; reservedStock: number }
 export interface AdminPage { items: AdminProduct[]; total: number; page: number; size: number }
 
 export async function catalogPage(query: URLSearchParams) {
@@ -26,4 +26,10 @@ export async function changeSaleStatus(detail: AdminDetail) {
   return await write(`/api/admin/products/${detail.product.id}/status`, {
     status: detail.product.status === 'ON_SALE' ? 'OFF_SALE' : 'ON_SALE', revision: detail.revision,
   }) as AdminDetail
+}
+export async function changeProductPrice(id: number, revision: number, price: string, reason: string) {
+  return await write(`/api/admin/products/${id}/price`, { revision, price, reason }) as AdminDetail
+}
+export async function adjustProductStock(id: number, delta: number, reason: string) {
+  return await write(`/api/admin/products/${id}/stock`, { delta, reason }) as AdminDetail
 }

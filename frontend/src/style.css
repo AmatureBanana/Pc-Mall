@@ -169,6 +169,12 @@ a { color: inherit; text-decoration: none; }
 .admin-product-form fieldset { border: 0; padding: 0; margin: 22px 0; min-width: 0; }.admin-product-form legend { color: #29476b; font-size: 16px; font-weight: 600; margin-bottom: 16px; }
 .admin-base-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 17px 22px; }.admin-wide { grid-column: 1 / -1; }
 .admin-product-state { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: #f3f7fc; border-radius: 6px; font-size: 12px; }
+.admin-adjustments { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-top: 20px; }
+.admin-product-form .admin-adjustments fieldset { display: grid; align-content: start; gap: 14px; padding: 18px; margin: 0; border: 1px solid #dce7f5; border-radius: 8px; }
+.admin-adjustments legend { padding-inline: 6px; margin: 0 !important; font-size: 14px !important; }
+.admin-adjustments p { font-size: 12px; line-height: 1.7; margin: 0; min-height: 42px; }
+.admin-adjustments .el-button { justify-self: start; }
+@media (max-width: 640px) { .admin-adjustments { grid-template-columns: 1fr; } }
 .admin-parameters-title { display: block; margin: 30px 0 12px !important; }.admin-form-hint { font-size: 12px; line-height: 1.8; }
 .admin-parameter-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }.admin-parameter { padding: 16px; border: 1px solid #e1e9f4; border-radius: 7px; display: grid; align-content: start; gap: 12px; }
 .admin-parameter header { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; color: #365b84; }.admin-parameter header small { color: #b17b27; white-space: nowrap; font-size: 10px; }.admin-parameter select[multiple] { min-height: 95px; }
