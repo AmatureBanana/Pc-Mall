@@ -35,4 +35,13 @@ class CatalogAdministrationController {
     }
     @GetMapping("/{id}/audit")
     Map<String,Object> audit(@PathVariable long id) throws Exception { return Map.of("data",products.audit(id)); }
+
+    @PostMapping("/{id}/price")
+    Map<String,Object> price(@PathVariable long id, @RequestBody JsonNode input, Authentication actor) throws Exception {
+        return Map.of("data",products.changePrice(id,input,actor.getName()));
+    }
+    @PostMapping("/{id}/stock")
+    Map<String,Object> stock(@PathVariable long id, @RequestBody JsonNode input, Authentication actor) throws Exception {
+        return Map.of("data",products.adjustStock(id,input,actor.getName()));
+    }
 }

@@ -37,4 +37,11 @@ interface CatalogAdministrationMapper {
     void edit(long id, CatalogAdministration.Fields fields);
     @Update("UPDATE products SET status=#{status},revision=revision+1 WHERE id=#{id}")
     void status(long id, String status);
+
+    @Update("UPDATE products SET price=#{price},revision=revision+1 WHERE id=#{id} AND revision=#{revision}")
+    int price(long id, long revision, java.math.BigDecimal price);
+
+    @Select("SELECT reserved_stock FROM products WHERE id=#{id}")
+    int reservedStock(long id);
+
 }

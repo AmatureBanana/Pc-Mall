@@ -1,6 +1,6 @@
 # 装机猫 · 电脑硬件商城
 
-任务 01～06：从空 MySQL 库经 Flyway 迁移、MyBatis 查询、公开 HTTP 接口，到 Vue 商品页面；支持八类硬件查询、搜索、详情，以及注册、Session 登录、CSRF、个人资料、昵称修改、改密撤销旧会话、后台商品草稿、分类参数、上下架、普通用户查询与启禁及原子审计。
+任务 01～07：从空 MySQL 库经 Flyway 迁移、MyBatis 查询、公开 HTTP 接口，到 Vue 商品页面；支持八类硬件查询、搜索、详情，以及注册、Session 登录、CSRF、个人资料、昵称修改、改密撤销旧会话、后台商品草稿、分类参数、上下架、普通用户查询与启禁、受控调价与库存调整及原子审计。
 
 ## 环境与依赖
 
@@ -31,7 +31,7 @@ $env:MAVEN_USER_HOME = "$PWD\.local\maven-user"
 ./scripts/local-db.ps1 stop
 ```
 
-应用启动时自动运行版本化 SQL：V1 建表、V2 导入 12 个型号、V3 修正机箱来源、V4 增加分类参数、V5～V7 建立账号与初始化锁及更新时间、V8 增加改密撤销会话的凭据版本、V9 增加商品版本与共享审计、V10 显式记录两款主板既有的SSD有效安装组合、V11 增加用户状态编辑版本及查询索引。Flyway 校验历史且禁用 clean，重复启动不重复导入；不要编辑已执行的迁移，应新增版本。参数契约见 [docs/catalog-parameters.md](docs/catalog-parameters.md)。
+应用启动时自动运行版本化 SQL：V1 建表、V2 导入 12 个型号、V3 修正机箱来源、V4 增加分类参数、V5～V7 建立账号与初始化锁及更新时间、V8 增加改密撤销会话的凭据版本、V9 增加商品版本与共享审计、V10 显式记录两款主板既有的SSD有效安装组合、V11 增加用户状态编辑版本及查询索引、V12 增加受控预占计数与持久化明细、V13 为预占头保存可当前读取的不可变数量快照。Flyway 校验历史且禁用 clean，重复启动不重复导入；不要编辑已执行的迁移，应新增版本。参数契约见 [docs/catalog-parameters.md](docs/catalog-parameters.md)。
 
 ## 开发启动
 
@@ -105,6 +105,7 @@ MySQL 就绪、前端依赖已安装后，在仓库根目录运行（测试脚�
 ./mvnw.cmd -Dtest=ProfilePasswordTest test
 ./mvnw.cmd -Dtest=CatalogAdministrationTest test
 ./mvnw.cmd -Dtest=UserAdministrationTest test
+./mvnw.cmd -Dtest=PriceStockTest test
 cd frontend
 npm.cmd run typecheck
 npm.cmd test -- --grep 'guest sees'
@@ -116,7 +117,7 @@ npm.cmd test -- --grep 'guest sees'
 
 商城顶部提供注册和统一登录。注册只创建普通用户，成功后进入登录；登录按服务端角色进入商城或后台。后台商品管理已可分页筛选、创建草稿、编辑八类参数及上下架；用户管理支持查询与启禁，订单模块保留基础导航。用户可直接打开 `/#login`、`/#register`、`/#admin`，权限仍由后端检查。
 
-管理员进入“商品管理”或 `/#admin/products`，新增时设置固定SKU、类别和可选初始售价；保存后补充资料与分类参数，全部必要条件满足后再上架。默认库存0，调价与库存调整由任务07接入；SKU和类别创建后不可修改。编辑、上下架与审计原子提交，遇到并发冲突请重新载入。接口、单位、来源与审计复用说明见[商品管理契约](docs/catalog-administration.md)，验证见[任务05记录](docs/evidence/task-05.md)。
+管理员进入“商品管理”或 `/#admin/products`，新增时设置固定SKU、类别和可选初始售价；保存后补充资料与分类参数，全部必要条件满足后再上架。默认库存0；SKU和类别创建后不可修改。详情提供调价及按增减量调整可售库存，两者都须填写原因，与审计原子提交，已有预占单独保留。价格或资料版本冲突时重新载入。接口、单位、来源与审计复用说明见[商品管理契约](docs/catalog-administration.md)、[价格与库存契约](docs/price-stock.md)，验证见[任务05记录](docs/evidence/task-05.md)、[任务07记录](docs/evidence/task-07.md)。
 
 管理员进入“用户管理”或 `/#admin/users`，按用户名和状态查询普通用户、查看详情并确认启禁。禁用拒绝新登录及既有会话的后续受保护请求，重新启用仍须重新登录；管理员账户及角色、用户名、密码等字段受到保护。状态与共享审计原子提交，冲突时重新载入；不删除账户或更改购物及订单历史。接口与边界见[用户管理契约](docs/user-administration.md)，验证见[任务06记录](docs/evidence/task-06.md)。
 

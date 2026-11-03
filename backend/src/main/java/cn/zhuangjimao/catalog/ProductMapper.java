@@ -9,7 +9,7 @@ interface ProductMapper {
     String SELECT_PRODUCT = """
             SELECT p.id, p.sku, p.name, p.category, c.label AS category_label,
                    p.brand, p.model, p.summary, p.image_url, p.price, p.stock,
-                   p.source_url, p.price_note, p.status
+                   p.source_url, p.price_note, p.status, p.revision
             FROM products p JOIN product_categories c ON c.code = p.category
             """;
 

@@ -13,7 +13,7 @@ export type Category = typeof categories[number]['code']
 export interface Product {
   id: number; sku: string; name: string; category: Exclude<Category, 'ALL'>; categoryLabel: string
   brand: string; model: string; summary: string; imageUrl: string; price: string; stock: number
-  sourceUrl: string; priceNote: string
+  sourceUrl: string; priceNote: string; revision: number
 }
 export interface ProductSlot { formFactor: string; interface: string; protocol: string }
 export interface ProductParameter {
@@ -32,6 +32,7 @@ function isProduct(value: unknown): value is Product {
     && categories.some(category => category.code !== 'ALL' && category.code === item.category)
     && typeof item.price === 'string' && /^\d+\.\d{2}$/.test(item.price)
     && Number.isSafeInteger(item.stock) && Number(item.stock) >= 0
+    && Number.isSafeInteger(item.revision) && Number(item.revision) >= 0
 }
 export async function loadProducts(signal: AbortSignal, category: Category = 'ALL', keyword = ''): Promise<Product[]> {
   const query = new URLSearchParams()
