@@ -2,7 +2,9 @@
 import { watch } from 'vue'
 import { ElButton, ElDialog, ElSkeleton } from 'element-plus'
 import { formatParameter, formatPrice, imageFallback, loadProduct } from './catalog'
+import { formatPerformanceScore } from './performance'
 import { useCatalogRequest } from './useCatalogRequest'
+import ProductPerformanceTags from './ProductPerformanceTags.vue'
 
 const props = defineProps<{ id: string }>()
 const emit = defineEmits<{ close: [] }>()
@@ -29,6 +31,13 @@ watch(() => props.id, refresh, { immediate: true })
         <dt>图片地址</dt><dd><a :href="detail.product.imageUrl" target="_blank" rel="noopener noreferrer">{{ detail.product.imageUrl }}</a></dd>
         <dt>型号来源</dt><dd><a :href="detail.product.sourceUrl" target="_blank" rel="noopener noreferrer">厂商资料 ↗</a></dd>
       </dl>
+      <section class="detail-performance-tags"><h3>性能标签</h3><ProductPerformanceTags :tags="detail.product.performanceTags"/></section>
+      <section v-if="detail.performance" class="performance-public" aria-label="性能参考">
+        <h3>性能参考</h3>
+        <p><strong class="performance-score">{{ detail.performance.score === null ? '暂无有效参考分' : `${detail.performance.performanceScore ? '综合评分 ' : ''}${formatPerformanceScore(detail.performance.score)} / 100` }}</strong> · {{ detail.performance.note }}</p>
+        <p v-if="detail.performance.performanceScore">性能子分 {{ formatPerformanceScore(detail.performance.performanceScore) }} / 100（仅比较性能参数）</p>
+        <small>映射版本 {{ detail.performance.mappingVersion }}</small>
+      </section>
       <h3>分类参数</h3>
       <table class="parameter-table"><thead><tr><th scope="col">参数</th><th scope="col">数值 / 支持集合</th><th scope="col">资料</th></tr></thead><tbody>
         <tr v-for="parameter in detail.parameters" :key="parameter.code"><th scope="row">{{ parameter.label }}</th><td><span :class="{ 'unverified-value': parameter.value === null }">{{ formatParameter(parameter) }}</span><small v-if="parameter.note">{{ parameter.note }}</small></td><td><a :href="parameter.sourceUrl" target="_blank" rel="noopener noreferrer" :aria-label="`${parameter.label}的厂商来源`">来源 ↗</a></td></tr>

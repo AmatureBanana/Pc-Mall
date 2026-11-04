@@ -1,6 +1,10 @@
 # 装机猫 · 电脑硬件商城
 
-任务 01～07：从空 MySQL 库经 Flyway 迁移、MyBatis 查询、公开 HTTP 接口，到 Vue 商品页面；支持八类硬件查询、搜索、详情，以及注册、Session 登录、CSRF、个人资料、昵称修改、改密撤销旧会话、后台商品草稿、分类参数、上下架、普通用户查询与启禁、受控调价与库存调整及原子审计。
+任务 01～08：从空 MySQL 库经 Flyway 迁移、MyBatis 查询、公开 HTTP 接口，到 Vue 商品页面；支持八类硬件查询、搜索、详情，以及注册、Session 登录、CSRF、个人资料、昵称修改、改密撤销旧会话、后台商品草稿、分类参数、上下架、普通用户查询与启禁、受控调价与库存调整、性能评分维护及原子审计。
+
+任务08新增一款核显CPU，正常演示种子共13件商品，并提供固定Blender 4.3.0的CPU/GPU参考。受控数据包保留458份官方完整提交、SHA-256和CC0许可；离线执行 `python scripts/performance-data.py --verify` 可核验。评分管理、版本与三场景数据边界见 [性能数据契约](docs/performance-data.md)。
+
+用户追加的全商品性能标签已覆盖商城卡片、搜索结果、详情及后台。CPU/GPU使用渲染参考分，内存/SSD使用[容量优先综合评分](docs/capacity-priority-scores.md)，其他类别展示当前关键规格；V16补充417份AMD完整提交，与初始包合计875份。标签与新增数据包见[全商品性能标签](docs/product-performance-tags.md)，AMD包可用 `python scripts/performance-amd-data.py --verify` 离线核验。
 
 ## 环境与依赖
 
@@ -31,7 +35,7 @@ $env:MAVEN_USER_HOME = "$PWD\.local\maven-user"
 ./scripts/local-db.ps1 stop
 ```
 
-应用启动时自动运行版本化 SQL：V1 建表、V2 导入 12 个型号、V3 修正机箱来源、V4 增加分类参数、V5～V7 建立账号与初始化锁及更新时间、V8 增加改密撤销会话的凭据版本、V9 增加商品版本与共享审计、V10 显式记录两款主板既有的SSD有效安装组合、V11 增加用户状态编辑版本及查询索引、V12 增加受控预占计数与持久化明细、V13 为预占头保存可当前读取的不可变数量快照。Flyway 校验历史且禁用 clean，重复启动不重复导入；不要编辑已执行的迁移，应新增版本。参数契约见 [docs/catalog-parameters.md](docs/catalog-parameters.md)。
+应用启动时自动运行版本化 SQL：V1 建表、V2 导入 12 个型号、V3 修正机箱来源、V4 增加分类参数、V5～V7 建立账号与初始化锁及更新时间、V8 增加改密撤销会话的凭据版本、V9 增加商品版本与共享审计、V10 显式记录两款主板既有的SSD有效安装组合、V11 增加用户状态编辑版本及查询索引、V12 增加受控预占计数与持久化明细、V13 为预占头保存可当前读取的不可变数量快照、V14 建立性能参考存储、V15 初始化受控评分与核显CPU样本、V16 补充AMD型号级性能参考。Flyway 校验历史且禁用 clean，重复启动不重复导入；不要编辑已执行的迁移，应新增版本。参数契约见 [docs/catalog-parameters.md](docs/catalog-parameters.md)。
 
 ## 开发启动
 

@@ -4,14 +4,14 @@ test('SYS-T01 subset: guest sees products from the real backend', async ({ page,
   const response = await request.get('/api/products')
   expect(response.ok()).toBeTruthy()
   const { data } = await response.json()
-  expect(data).toHaveLength(12)
+  expect(data).toHaveLength(13)
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Intel Core i5-14600KF', exact: true })).toBeVisible()
   const card = page.getByRole('article').filter({ has: page.getByRole('heading', { name: data[0].name, exact: true }) })
   await expect(card.getByText('CPU', { exact: true })).toBeVisible()
   await expect(card.getByText('1,499.00', { exact: false })).toBeVisible()
   await expect(card.getByText('库存 12 件')).toBeVisible()
-  await expect(page.getByRole('article')).toHaveCount(12)
+  await expect(page.getByRole('article')).toHaveCount(13)
   await page.screenshot({ path: '../docs/evidence/task-01-storefront.png', fullPage: true })
 })
 
@@ -28,7 +28,7 @@ test('request failure is explicit and retry recovers from the real backend', asy
   await expect(page.getByText('没有找到符合条件的商品')).toHaveCount(0)
   await expect(page.getByRole('article')).toHaveCount(0)
   await page.getByRole('button', { name: '重新加载' }).click()
-  await expect(page.getByRole('article')).toHaveCount(12)
+  await expect(page.getByRole('article')).toHaveCount(13)
 })
 
 test('a successful empty response is different from a failed request', async ({ page }) => {
@@ -41,7 +41,7 @@ test('a successful empty response is different from a failed request', async ({ 
 test('mobile layout keeps database products readable without horizontal page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
-  await expect(page.getByRole('article')).toHaveCount(12)
+  await expect(page.getByRole('article')).toHaveCount(13)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
   await page.screenshot({ path: '../docs/evidence/task-01-mobile.png', fullPage: true })
 })

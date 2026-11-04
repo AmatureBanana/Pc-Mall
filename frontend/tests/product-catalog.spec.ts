@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 test('SYS-T01 catalog: category and search query the real backend', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('article')).toHaveCount(12)
+  await expect(page.getByRole('article')).toHaveCount(13)
   const categoryResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('category') === 'MEMORY')
   await page.getByRole('navigation', { name: '硬件分类' }).getByRole('button', { name: '内存', exact: true }).click()
   expect((await categoryResponse).ok()).toBeTruthy()
@@ -17,7 +17,7 @@ test('SYS-T01 catalog: category and search query the real backend', async ({ pag
   await expect(page.getByText('没有找到符合条件的商品')).toBeVisible()
   await expect(page.getByRole('heading', { name: '商品加载失败' })).toHaveCount(0)
   await page.getByRole('button', { name: '清除筛选' }).click()
-  await expect(page.getByRole('article')).toHaveCount(12)
+  await expect(page.getByRole('article')).toHaveCount(13)
 })
 
 test('SYS-T01 catalog: guest opens memory details and can reload the direct URL', async ({ page }) => {
@@ -37,13 +37,13 @@ test('SYS-T01 catalog: guest opens memory details and can reload the direct URL'
   await page.screenshot({ path: '../docs/evidence/task-02-memory-detail.png', fullPage: true, animations: 'disabled' })
   await dialog.getByRole('button', { name: '关闭详情' }).click()
   await expect(dialog).toHaveCount(0)
-  await expect(page.getByRole('article')).toHaveCount(12)
+  await expect(page.getByRole('article')).toHaveCount(13)
 })
 
 test('all eight categories are reachable through the real catalog', async ({ page }) => {
   await page.goto('/')
   const nav = page.getByRole('navigation', { name: '硬件分类' })
-  for (const [label, count] of [['CPU', 2], ['主板', 2], ['独显', 2], ['内存', 1], ['SSD', 2], ['电源', 1], ['机箱', 1], ['散热器', 1]] as const) {
+  for (const [label, count] of [['CPU', 3], ['主板', 2], ['独显', 2], ['内存', 1], ['SSD', 2], ['电源', 1], ['机箱', 1], ['散热器', 1]] as const) {
     await nav.getByRole('button', { name: label, exact: true }).click()
     await expect(page.getByRole('article')).toHaveCount(count)
     await expect(nav.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-pressed', 'true')
@@ -88,7 +88,7 @@ test('detail request failure clears content and retry reads the real backend', a
 
 test('category request failure can retry the same selection', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('article')).toHaveCount(12)
+  await expect(page.getByRole('article')).toHaveCount(13)
   await page.route('**/api/products?category=SSD', route => route.fulfill({ status: 503, json: { code: 'CATALOG_UNAVAILABLE' } }))
   await page.getByRole('navigation', { name: '硬件分类' }).getByRole('button', { name: 'SSD', exact: true }).click()
   await expect(page.getByRole('heading', { name: '商品加载失败' })).toBeVisible()

@@ -17,7 +17,7 @@ class ProductController {
 
     @GetMapping("/api/products")
     ProductList products(@RequestParam(required = false) HardwareCategory category,
-                         @RequestParam(defaultValue = "") String keyword) {
+                         @RequestParam(defaultValue = "") String keyword) throws Exception {
         return new ProductList(products.search(category, keyword));
     }
 
@@ -26,6 +26,6 @@ class ProductController {
         return new ProductDetail(products.detail(id));
     }
 
-    record ProductList(List<Product> data) {}
+    record ProductList(List<ProductPerformanceTags.TaggedProduct> data) {}
     record ProductDetail(ProductCatalog.Detail data) {}
 }

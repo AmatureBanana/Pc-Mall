@@ -1,5 +1,9 @@
 # 商品数据、图像与依赖来源
 
+任务08新增Intel i5-14600K和官方Blender受控样本，当前正常种子为13件商品；逐字段来源、快照SHA-256、CC0归因与型号级参考限制见[性能数据契约](performance-data.md)和 `data/performance-v1/manifest.json`。以下12件表格保留任务01的历史来源说明。
+
+后续[全商品性能标签](product-performance-tags.md)增加独立 `performance-amd-v1` 包及V16，补充AMD型号级参考，保留同一官方快照、CC0、UUID与校验值；其他类别标签只读取已核验参数，不新增统一评分。
+
 任务 02 新增的 `catalog-parameters-v1` 参数、描述与逐字段核验记录见 [catalog-parameters.md](catalog-parameters.md)。以下保留任务 01 的基础数据来源记录；后续分类规则须读取结构化参数，不能解析摘要。
 
 数据版本：`catalog-demo-v1`；整理日期：2026-10-30。12 个真实型号用于公共商品展示，不是已验证可组装、可推荐的硬件库。显示摘要只摘录型号识别所需事实；后续任务须建立并逐项核验结构化技术参数。

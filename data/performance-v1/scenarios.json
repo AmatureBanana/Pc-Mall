@@ -1,0 +1,44 @@
+{
+  "note": "仅为后续规则/推荐的真实候选数据，不是已执行兼容引擎的通过结果。全部售价与库存均为商城演示值。",
+  "office": {
+    "skus": [
+      "INTEL-I5-14600K",
+      "ASUS-TUF-B760M-PLUS-WIFI",
+      "KINGSTON-KF560C36BBEK2-32",
+      "SAMSUNG-MZ-V9P1T0BW",
+      "CORSAIR-CP-9020295",
+      "DEEPCOOL-CC560",
+      "DEEPCOOL-AK400"
+    ],
+    "demoTotalCny": "5653.00",
+    "graphics": "UHD 770 + 主板HDMI/DisplayPort"
+  },
+  "gaming": {
+    "skus": [
+      "INTEL-I5-14600KF",
+      "NVIDIA-RTX4070SUPER-FE",
+      "ASUS-TUF-B760M-PLUS-WIFI",
+      "KINGSTON-KF560C36BBEK2-32",
+      "SAMSUNG-MZ-V9P1T0BW",
+      "CORSAIR-CP-9020295",
+      "DEEPCOOL-CC560",
+      "DEEPCOOL-AK400"
+    ],
+    "demoTotalCny": "10552.00",
+    "graphics": "RTX 4070 SUPER FE"
+  },
+  "creation": {
+    "skus": [
+      "INTEL-I5-14600K",
+      "NVIDIA-RTX4070SUPER-FE",
+      "ASUS-TUF-B760M-PLUS-WIFI",
+      "KINGSTON-KF560C36BBEK2-32",
+      "SAMSUNG-MZ-V9P1T0BW",
+      "CORSAIR-CP-9020295",
+      "DEEPCOOL-CC560",
+      "DEEPCOOL-AK400"
+    ],
+    "demoTotalCny": "10652.00",
+    "graphics": "RTX 4070 SUPER FE"
+  }
+}

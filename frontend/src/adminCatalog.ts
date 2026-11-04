@@ -1,7 +1,9 @@
 import { request, write } from './auth'
-import type { Product } from './catalog'
+import type { ProductIdentity } from './catalog'
+import type { PerformanceTag } from './performance'
 
-export interface AdminProduct extends Product { status: 'ON_SALE' | 'OFF_SALE' }
+export interface AdminProduct extends ProductIdentity { status: 'ON_SALE' | 'OFF_SALE' }
+export interface AdminListProduct extends AdminProduct { performanceTags: PerformanceTag[] }
 export interface ParameterField {
   code: string; label: string; type: 'TEXT' | 'NUMBER' | 'INTEGER' | 'BOOLEAN' | 'SET' | 'SSD_SLOTS'
   unit: string; required: boolean; options: string[]
@@ -11,8 +13,8 @@ export interface AdminParameter {
   code: string; label: string; value: string | number | boolean | string[] | Slot[] | null
   unit: string; sourceUrl: string; note: string
 }
-export interface AdminDetail { product: AdminProduct; description: string; parameters: AdminParameter[]; revision: number; dataVersion: string; reservedStock: number }
-export interface AdminPage { items: AdminProduct[]; total: number; page: number; size: number }
+export interface AdminDetail { product: AdminProduct; description: string; parameters: AdminParameter[]; revision: number; dataVersion: string; reservedStock: number; performanceTags: PerformanceTag[] }
+export interface AdminPage { items: AdminListProduct[]; total: number; page: number; size: number }
 
 export async function catalogPage(query: URLSearchParams) {
   return await request(`/api/admin/products?${query}`) as AdminPage
