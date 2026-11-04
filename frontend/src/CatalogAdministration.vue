@@ -2,6 +2,8 @@
 import { nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElButton, ElPagination, ElTable, ElTableColumn, ElTag } from 'element-plus'
 import AdminField from './AdminField.vue'
+import PerformanceAdministration from './PerformanceAdministration.vue'
+import ProductPerformanceTags from './ProductPerformanceTags.vue'
 import { AuthError } from './auth'
 import { categories, formatPrice } from './catalog'
 import { catalogPage, catalogDetail, parameterSchema, saveProduct, changeSaleStatus, changeProductPrice, adjustProductStock,
@@ -20,6 +22,7 @@ let metadataRevision = 0
 let priceRevision = 0
 const form = reactive({ sku: '', category: 'CPU', name: '', brand: '', model: '', summary: '', description: '', imageUrl: '', sourceUrl: '', priceNote: '管理员录入的 CNY 售价', price: '' })
 let revision = 0
+let performanceTagRequest = 0
 function feedback(cause: unknown) {
   error.value = cause instanceof Error ? cause.message : '商品维护失败，请稍后重试。'
   if (cause instanceof AuthError && (cause.status === 401 || cause.status === 403)) {
@@ -105,6 +108,19 @@ function acceptAdjustment(result: AdminDetail) {
   }
   detail.value = result
 }
+async function performanceUpdated(nextRevision: number) {
+  if (!detail.value) return
+  const id = detail.value.product.id, current = revision, tagRequest = ++performanceTagRequest
+  acceptAdjustment({ ...detail.value, revision: nextRevision, product: { ...detail.value.product, revision: nextRevision } })
+  try {
+    const latest = await catalogDetail(id)
+    if (revision === current && tagRequest === performanceTagRequest && detail.value?.product.id === id
+      && latest.revision >= detail.value.revision) detail.value.performanceTags = latest.performanceTags
+  } catch (cause) {
+    if (revision === current && tagRequest === performanceTagRequest && detail.value?.product.id === id
+      && detail.value.revision === nextRevision) feedback(cause)
+  }
+}
 async function adjust(kind: 'price' | 'stock') {
   if (!detail.value || busy.value || loading.value) return
   busy.value = true; error.value = ''; notice.value = ''
@@ -154,7 +170,7 @@ watch([error, notice], async () => {
         <label>状态<select v-model="status" aria-label="筛选销售状态"><option value="">全部状态</option><option value="OFF_SALE">已下架</option><option value="ON_SALE">已上架</option></select></label>
         <ElButton native-type="submit" :disabled="loading">查询</ElButton></form>
       <ElTable :data="page.items" empty-text="没有符合条件的商品" stripe>
-        <ElTableColumn prop="sku" label="SKU" min-width="185"/><ElTableColumn prop="name" label="商品" min-width="185"/>
+        <ElTableColumn prop="sku" label="SKU" min-width="185"/><ElTableColumn label="商品" min-width="220"><template #default="scope">{{ scope.row.name }}<ProductPerformanceTags :tags="scope.row.performanceTags" compact/></template></ElTableColumn>
         <ElTableColumn prop="categoryLabel" label="类别" width="82"/><ElTableColumn label="售价 / 库存" width="128"><template #default="scope">¥{{ formatPrice(scope.row.price) }}<small class="admin-stock">可售 {{ scope.row.stock }}</small></template></ElTableColumn>
         <ElTableColumn label="状态" width="90"><template #default="scope"><ElTag :type="scope.row.status === 'ON_SALE' ? 'success' : 'info'">{{ scope.row.status === 'ON_SALE' ? '已上架' : '已下架' }}</ElTag></template></ElTableColumn>
         <ElTableColumn label="操作" width="85"><template #default="scope"><ElButton link type="primary" :disabled="loading" @click="open(scope.row.id)">查看编辑</ElButton></template></ElTableColumn>
@@ -163,6 +179,7 @@ watch([error, notice], async () => {
     </template>
     <form v-else class="admin-product-form" @submit.prevent="save">
       <div v-if="detail" class="admin-product-state"><ElTag :type="detail.product.status === 'ON_SALE' ? 'success' : 'info'">{{ detail.product.status === 'ON_SALE' ? '已上架' : '已下架' }}</ElTag><span>商品 #{{ detail.product.id }} · 当前售价 ¥{{ formatPrice(detail.product.price) }} · 可售库存 {{ detail.product.stock }} · 已预占 {{ detail.reservedStock }}</span></div>
+      <section v-if="detail" class="saved-performance-tags"><h3>性能标签</h3><p>基于已保存的参数与评分</p><ProductPerformanceTags :tags="detail.performanceTags"/></section>
       <div v-if="detail" class="admin-adjustments">
         <fieldset :disabled="busy || loading || unauthorized"><legend>调整售价</legend><p>售价以人民币计，最多两位小数。调整后立即用于新的商品查询。</p>
           <AdminField v-model="newPrice" label="新售价（元）" :maxlength="13"/><AdminField v-model="priceReason" label="调价原因" :maxlength="500"/>
@@ -185,6 +202,7 @@ watch([error, notice], async () => {
         </div>
         <legend class="admin-parameters-title">{{ categories.find(c => c.code === form.category)?.label }}专属参数</legend>
         <p class="admin-form-hint">空值表示未核验；标记“上架必需”的字段须补齐，并提供来源地址。功率使用 W，尺寸使用 mm；集合可按 Ctrl 多选。</p>
+        <p v-if="detail && ['MEMORY', 'SSD'].includes(form.category)" class="admin-form-hint">更改品牌或型号时，先清空旧的{{ form.category === 'MEMORY' ? '标称速率、时序对应速率和时序' : '顺序读写速度' }}。保存会移除这些字段的旧来源，之后按新型号补录。</p>
         <div class="admin-parameter-grid">
           <section v-for="(field, index) in schema" :key="field.code" class="admin-parameter"><header><strong>{{ field.label }}</strong><small v-if="field.required">上架必需</small></header>
             <template v-for="p in [parameters[index]!]" :key="p.code">
@@ -205,5 +223,8 @@ watch([error, notice], async () => {
       </fieldset>
       <div class="admin-form-actions"><ElButton type="primary" native-type="submit" :loading="busy" :disabled="loading || unauthorized || schema.length === 0">{{ detail ? '保存修改' : '保存草稿' }}</ElButton><ElButton v-if="detail" :type="detail.product.status === 'ON_SALE' ? 'warning' : 'success'" :disabled="busy || loading || unauthorized" @click="changeStatus">{{ detail.product.status === 'ON_SALE' ? '下架商品' : '上架商品' }}</ElButton><ElButton v-if="detail" :disabled="busy" @click="open(detail.product.id)">重新载入</ElButton><span>上下架使用最近一次保存的资料</span></div>
     </form>
+    <PerformanceAdministration v-if="editing && detail && ['CPU', 'GPU'].includes(detail.product.category)" :key="detail.product.id"
+      :id="detail.product.id" :category="detail.product.category" :brand="detail.product.brand" :disabled="busy || loading || unauthorized"
+      @updated="performanceUpdated" @expired="emit('expired')"/>
   </div>
 </template>

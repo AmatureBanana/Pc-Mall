@@ -17,17 +17,19 @@ class CatalogAdministration {
     private final ObjectMapper json;
     private final AdministrationAudit audit;
     private final InventoryMapper inventory;
+    private final ProductPerformanceTags tags;
 
-    CatalogAdministration(CatalogAdministrationMapper admin, ProductMapper products, ObjectMapper json, AdministrationAudit audit, InventoryMapper inventory) {
+    CatalogAdministration(CatalogAdministrationMapper admin, ProductMapper products, ObjectMapper json, AdministrationAudit audit, InventoryMapper inventory,ProductPerformanceTags tags) {
         this.admin = admin; this.products = products; this.json = json; this.audit = audit; this.inventory = inventory;
+        this.tags=tags;
     }
 
     @Transactional(readOnly = true)
-    public Page search(HardwareCategory category, String status, String keyword, int page, int size) {
+    public Page search(HardwareCategory category, String status, String keyword, int page, int size) throws Exception {
         if (page < 1 || size < 1 || size > 100 || keyword.length() > 100
                 || status != null && !Set.of("ON_SALE", "OFF_SALE").contains(status)) invalid("分页或筛选条件无效。");
         String code = category == null ? null : category.name();
-        return new Page(admin.search(code, status, keyword.strip(), size, (long)(page - 1) * size),
+        return new Page(tags.decorate(admin.search(code, status, keyword.strip(), size, (long)(page - 1) * size)),
                 admin.count(code, status, keyword.strip()), page, size);
     }
 
@@ -39,7 +41,7 @@ class CatalogAdministration {
         var spec = products.findSpecification(id);
         return new Detail(product, spec == null ? "" : spec.description(),
                 spec == null ? json.createArrayNode() : json.readTree(spec.parameters()),
-                spec == null ? "admin-v1" : spec.dataVersion(), admin.revision(id), admin.reservedStock(id));
+                spec == null ? "admin-v1" : spec.dataVersion(), admin.revision(id), admin.reservedStock(id),tags.forProduct(product));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -68,6 +70,12 @@ class CatalogAdministration {
         var product = before.product();
         var fields = fields(input,product.sku(),product.category(),product.price());
         var parameters = HardwareParameters.validate(product.category(), input.get("parameters"),json);
+        if (!product.brand().equals(fields.brand()) || !product.model().equals(fields.model())) {
+            if (CapacityPerformance.hasProfileValues(product.category(),parameters)) {
+                invalid("更改品牌或型号时，请先清空旧型号的速率、时序或顺序读写评分参数，保存后按新型号补录。");
+            }
+            CapacityPerformance.removeProfileFields(product.category(),parameters);
+        }
         String description = text(input,"description",10000);
         if (product.status().equals("ON_SALE")) validateSale(fields,description,parameters);
         admin.edit(id,fields);
@@ -197,6 +205,6 @@ class CatalogAdministration {
     static void invalid(String message) { throw new CatalogException(HttpStatus.BAD_REQUEST, "INVALID_PRODUCT", message); }
     record Fields(String sku, String category, String name, String brand, String model, String summary,
                   String imageUrl, String sourceUrl, String priceNote, BigDecimal price) {}
-    record Detail(Product product, String description, JsonNode parameters, String dataVersion, long revision, int reservedStock) {}
-    record Page(List<Product> items, long total, int page, int size) {}
+    record Detail(Product product, String description, JsonNode parameters, String dataVersion, long revision, int reservedStock,List<ProductPerformanceTags.Tag> performanceTags) {}
+    record Page(List<ProductPerformanceTags.TaggedProduct> items, long total, int page, int size) {}
 }

@@ -43,7 +43,7 @@ test('visitor registers, separately logs in, sees forbidden administration and l
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
   expect((await page.request.get('/api/auth/me')).status()).toBe(401)
-  await expect(page.locator('.product-card')).toHaveCount(12)
+  await expect(page.locator('.product-card')).toHaveCount(13)
 })
 
 test('administrator uses the unified login and can navigate every administration module', async ({ page }) => {

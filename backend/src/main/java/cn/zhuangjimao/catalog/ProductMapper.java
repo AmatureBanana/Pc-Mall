@@ -3,6 +3,7 @@ package cn.zhuangjimao.catalog;
 import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Param;
 
 @Mapper
 interface ProductMapper {
@@ -28,4 +29,16 @@ interface ProductMapper {
     Specification findSpecification(long id);
 
     record Specification(String description, String parameters, String dataVersion) {}
+
+    @Select("""
+        <script>
+        SELECT p.id AS product_id,s.parameters,r.reference_data,r.identity_data
+        FROM products p LEFT JOIN product_specifications s ON s.product_id=p.id
+        LEFT JOIN product_performance r ON r.product_id=p.id
+        WHERE p.id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        </script>
+        """)
+    List<TagSource> tagSources(@Param("ids") List<Long> ids);
+    record TagSource(long productId,String parameters,String referenceData,String identityData) {}
 }

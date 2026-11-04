@@ -1,0 +1,8 @@
+# These archived/generated evidence bytes are covered by manifest SHA-256 values.
+data/performance-v1/* -text
+# Preserve the upstream license, including its final blank line.
+data/performance-v1/LICENSE.txt whitespace=-blank-at-eof
+backend/src/main/resources/db/migration/V15__trusted_performance_demo.sql -text
+data/performance-amd-v1/* -text
+data/performance-amd-v1/LICENSE.txt whitespace=-blank-at-eof
+backend/src/main/resources/db/migration/V16__amd_performance_references.sql -text

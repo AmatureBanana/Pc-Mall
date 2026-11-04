@@ -10,10 +10,15 @@ import java.util.Map;
 @RequestMapping("/api/admin/products")
 class CatalogAdministrationController {
     private final CatalogAdministration products;
-    CatalogAdministrationController(CatalogAdministration products) { this.products = products; }
+    private final PerformanceReferences performance;
+    CatalogAdministrationController(CatalogAdministration products,PerformanceReferences performance) { this.products = products; this.performance=performance; }
+    @GetMapping("/{id}/performance")
+    Map<String,Object> performance(@PathVariable long id) throws Exception { return Map.of("data",performance.detail(id)); }
+    @PostMapping("/{id}/performance")
+    Map<String,Object> performance(@PathVariable long id,@RequestBody JsonNode input,Authentication actor) throws Exception { return Map.of("data",performance.save(id,input,actor.getName())); }
     @GetMapping
     Map<String,Object> search(@RequestParam(required=false) HardwareCategory category, @RequestParam(required=false) String status,
-            @RequestParam(defaultValue="") String keyword, @RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="10") int size) {
+            @RequestParam(defaultValue="") String keyword, @RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="10") int size) throws Exception {
         return Map.of("data", products.search(category,status,keyword,page,size));
     }
     @GetMapping("/{id}")

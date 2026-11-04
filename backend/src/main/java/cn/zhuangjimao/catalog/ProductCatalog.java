@@ -13,17 +13,22 @@ import org.springframework.transaction.annotation.Transactional;
 class ProductCatalog {
     private final ProductMapper products;
     private final ObjectMapper json;
+    private final PerformanceReferences performance;
+    private final ProductPerformanceTags tags;
 
-    ProductCatalog(ProductMapper products, ObjectMapper json) {
+    ProductCatalog(ProductMapper products, ObjectMapper json, PerformanceReferences performance,ProductPerformanceTags tags) {
         this.products = products;
         this.json = json;
+        this.performance = performance;
+        this.tags=tags;
     }
 
-    List<Product> search(HardwareCategory category, String keyword) {
+    @Transactional(readOnly=true)
+    public List<ProductPerformanceTags.TaggedProduct> search(HardwareCategory category, String keyword) throws Exception {
         if (keyword.length() > 100) {
             throw new CatalogException(HttpStatus.BAD_REQUEST, "INVALID_QUERY", "搜索关键词不能超过 100 个字符。");
         }
-        return products.findOnSale(category == null ? null : category.name(), keyword.strip());
+        return tags.decorate(products.findOnSale(category == null ? null : category.name(), keyword.strip()));
     }
 
     @Transactional(readOnly = true)
@@ -43,9 +48,11 @@ class ProductCatalog {
             throw new CatalogException(HttpStatus.SERVICE_UNAVAILABLE, "PRODUCT_DATA_UNAVAILABLE", "商品参数暂时不可用，请稍后重试。");
         }
         List<Parameter> parameters = json.readValue(specification.parameters(), new TypeReference<>() {});
-        return new Detail(product, specification.description(), parameters, specification.dataVersion());
+        try { return new Detail(tags.decorate(List.of(product)).get(0), specification.description(), parameters, specification.dataVersion(),performance.read(id)); }
+        catch (JsonProcessingException e) { throw e; }
+        catch (Exception e) { throw new IllegalStateException("性能参考无法读取",e); }
     }
 
     record Parameter(String code, String label, JsonNode value, String unit, String sourceUrl, String note) {}
-    record Detail(Product product, String description, List<Parameter> parameters, String dataVersion) {}
+    record Detail(ProductPerformanceTags.TaggedProduct product, String description, List<Parameter> parameters, String dataVersion, PerformanceReferences.Score performance) {}
 }

@@ -1,3 +1,5 @@
+import { isPerformanceTag, type PerformanceTag } from './performance'
+
 export const categories = [
   { code: 'ALL', label: '全部商品', icon: 'grid' },
   { code: 'CPU', label: 'CPU', icon: 'cpu' },
@@ -10,11 +12,12 @@ export const categories = [
   { code: 'COOLER', label: '独立散热器', icon: 'cooler' },
 ] as const
 export type Category = typeof categories[number]['code']
-export interface Product {
+export interface ProductIdentity {
   id: number; sku: string; name: string; category: Exclude<Category, 'ALL'>; categoryLabel: string
   brand: string; model: string; summary: string; imageUrl: string; price: string; stock: number
   sourceUrl: string; priceNote: string; revision: number
 }
+export interface Product extends ProductIdentity { performanceTags: PerformanceTag[] }
 export interface ProductSlot { formFactor: string; interface: string; protocol: string }
 export interface ProductParameter {
   code: string; label: string; value: string | number | boolean | string[] | ProductSlot[] | null
@@ -22,6 +25,7 @@ export interface ProductParameter {
 }
 export interface ProductDetail {
   product: Product; description: string; parameters: ProductParameter[]; dataVersion: string
+  performance?: import('./performance').PerformanceScore
 }
 function isProduct(value: unknown): value is Product {
   if (!value || typeof value !== 'object') return false
@@ -33,6 +37,7 @@ function isProduct(value: unknown): value is Product {
     && typeof item.price === 'string' && /^\d+\.\d{2}$/.test(item.price)
     && Number.isSafeInteger(item.stock) && Number(item.stock) >= 0
     && Number.isSafeInteger(item.revision) && Number(item.revision) >= 0
+    && Array.isArray(item.performanceTags) && item.performanceTags.length > 0 && item.performanceTags.every(isPerformanceTag)
 }
 export async function loadProducts(signal: AbortSignal, category: Category = 'ALL', keyword = ''): Promise<Product[]> {
   const query = new URLSearchParams()
@@ -62,6 +67,16 @@ function isParameter(value: unknown): value is ProductParameter {
         || item.code === 'ssdSlots' && entry && typeof entry === 'object'
           && ['formFactor', 'interface', 'protocol'].every(key => typeof entry[key] === 'string'))))
 }
+function isPerformance(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false
+  const item = value as Record<string, unknown>
+  const validScore = (score: unknown) => typeof score === 'string' && /^\d+\.\d{6}$/.test(score) && Number(score) <= 100
+  return ['VALID', 'MISSING', 'INVALID', 'STALE'].includes(String(item.state))
+    && typeof item.note === 'string' && typeof item.mappingVersion === 'string'
+    && (item.state === 'VALID' ? validScore(item.score) : item.score === null)
+    && (item.performanceScore === undefined || item.state === 'VALID' && validScore(item.performanceScore))
+    && (item.reference === null || typeof item.reference === 'object' && !Array.isArray(item.reference))
+}
 export async function loadProduct(id: string, signal: AbortSignal): Promise<ProductDetail> {
   const response = await fetch(`/api/products/${encodeURIComponent(id)}`, { signal, headers: { Accept: 'application/json' } })
   if (!response.ok) {
@@ -80,7 +95,8 @@ export async function loadProduct(id: string, signal: AbortSignal): Promise<Prod
   if (!isProduct(detail.product) || detail.product.id !== Number(id)
       || typeof detail.description !== 'string' || !detail.description
       || typeof detail.dataVersion !== 'string' || !detail.dataVersion
-      || !Array.isArray(detail.parameters) || !detail.parameters.length || !detail.parameters.every(isParameter)) {
+      || !Array.isArray(detail.parameters) || !detail.parameters.length || !detail.parameters.every(isParameter)
+      || detail.performance !== undefined && !isPerformance(detail.performance)) {
     throw new Error('商品详情数据格式异常，请稍后重试。')
   }
   return detail as unknown as ProductDetail

@@ -39,10 +39,13 @@ final class HardwareParameters {
                     choice("installationInterface","安装接口",true,List.of("PCIe x16","PCIe x8","PCIe x4")),text("pcieGeneration","PCIe 代际"),
                     number("boardPowerEstimate","总板卡功耗估算","W",true),number("length","显卡长度","mm",true),set("displayOutputs","有效视频输出",true,OUTPUTS));
             case MEMORY -> List.of(choice("generation","内存代际",true,DDR),number("totalCapacity","套装总标称容量","GB",true),integer("stickCount","实际条数","条",true),
-                    number("capacityPerStick","单条容量","GB",false),number("dataRate","数据速率","MT/s",false),number("jedecDataRate","默认数据速率","MT/s",false));
+                    number("capacityPerStick","单条容量","GB",false),number("dataRate","标称数据速率","MT/s",false),number("jedecDataRate","默认数据速率","MT/s",false),
+                    number("timingDataRate","下列时序对应的速率（须与标称速率一致）","MT/s",false),integer("casLatency","CAS 延迟（CL）","周期",false),
+                    integer("trcd","tRCD","周期",false),integer("trp","tRP","周期",false));
             case SSD -> List.of(number("capacity","十进制规范容量","GB",true),field("originalCapacity","原始容量","NUMBER","CAPACITY",true,List.of("GB","TB","GiB","TiB")),
                     choice("formFactor","物理规格",true,SSD_FORMS),choice("interface","连接接口",true,List.of("PCIe","SATA")),choice("protocol","协议",true,List.of("NVMe","AHCI")),
-                    text("pcieGeneration","PCIe 代际"),integer("lanes","PCIe 通道数","",false));
+                    text("pcieGeneration","PCIe 代际"),integer("lanes","PCIe 通道数","",false),
+                    number("sequentialRead","标称顺序读取","MB/s",false),number("sequentialWrite","标称顺序写入","MB/s",false));
             case PSU -> List.of(number("ratedPower","有效额定功率","W",true),text("manufacturerPartNumber","厂商型号"),choice("formFactor","电源板型",false,List.of("ATX","SFX","SFX-L","TFX")),text("atxVersion","ATX 版本"),number("length","电源长度","mm",false));
             case CASE -> List.of(set("supportedMotherboardFormFactors","支持主板板型",true,BOARDS),number("maxGpuLength","默认安装显卡限长","mm",true),
                     number("maxCoolerHeight","默认安装散热器限高","mm",true),number("maxPsuLength","电源限长","mm",false));

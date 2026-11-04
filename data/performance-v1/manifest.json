@@ -1,0 +1,26 @@
+{
+  "dataVersion": "performance-demo-v1",
+  "mappingVersion": "performance-v1",
+  "license": "CC0-1.0",
+  "snapshot": {
+    "sourceUrl": "https://opendata.blender.org/snapshots/opendata-latest.zip",
+    "capturedDate": "2026-11-03",
+    "lastModifiedUtc": "2026-11-03T00:01:23Z",
+    "bytes": 102160171,
+    "sha256": "7e0875527aea34d96e99c933d1e82c62a20dac0a343720d252b12c21228812dd"
+  },
+  "sceneChecksums": {
+    "classroom": "936f0a528f03eba291c67ea87743a0ebde58938fb87471b262721b89b46b875d",
+    "junkshop": "f5515a21a1337b908212d8d76733530df83014464a24c585ab7b96000da0cdce",
+    "monster": "8ff812a02f720433de1403dab447be9541eecca71cc919224a7790d017c1b2ce"
+  },
+  "rawSubsetSha256": "9c67ef103fb3780908a32d2374445d7fb1d8a764747d8f10a2706f9dca3c223e",
+  "submissions": 458,
+  "checksums": {
+    "data/performance-v1/LICENSE.txt": "7179683e8000e6bdc9bbc60d85edf0a4ac8e76f951857f54fcb775d5886f1309",
+    "data/performance-v1/submissions.jsonl.gz": "af758a969b3170d4b26a97c81f61ebbf85cb1960f261e831fa9ffd463b863328",
+    "data/performance-v1/references.json": "195c40f670ae1dc3e681c5b6334c072d2c08392094137cf1beb886cb314be956",
+    "data/performance-v1/scenarios.json": "f0b6c456eef84b3294831eb56d0e23987f5b0580e684c0219136087ae430fae8",
+    "backend/src/main/resources/db/migration/V15__trusted_performance_demo.sql": "4e69127c24341ee18cc362d41e0af77931c17e2c05f7d799c75fcfc3160a6ec1"
+  }
+}

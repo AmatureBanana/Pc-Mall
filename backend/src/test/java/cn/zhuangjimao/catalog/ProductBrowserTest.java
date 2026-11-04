@@ -26,7 +26,7 @@ class ProductBrowserTest {
             var response = get(app, "/api/products");
             assertThat(response.statusCode()).isEqualTo(200);
             first = new ObjectMapper().readTree(response.body());
-            assertThat(first.path("data").size()).isEqualTo(12);
+            assertThat(first.path("data").size()).isEqualTo(13);
             JsonNode product = first.path("data").get(0);
             assertThat(product.path("name").asText()).isEqualTo("Intel Core i5-14600KF");
             assertThat(product.path("category").asText()).isEqualTo("CPU");

@@ -3,6 +3,7 @@ package cn.zhuangjimao.catalog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -25,8 +26,8 @@ class ApiErrors {
                 id ? "商品 ID 必须是有效正整数。" : "请选择有效的硬件类别。"));
     }
 
-    @ExceptionHandler(DataAccessException.class)
-    ResponseEntity<ApiError> databaseUnavailable(DataAccessException exception) {
+    @ExceptionHandler({DataAccessException.class,CannotCreateTransactionException.class})
+    ResponseEntity<ApiError> databaseUnavailable(Exception exception) {
         log.error("Product database request failed", exception);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(new ApiError("CATALOG_UNAVAILABLE", "商品服务暂时不可用，请稍后重试。"));
