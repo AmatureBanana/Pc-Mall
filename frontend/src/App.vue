@@ -6,6 +6,7 @@ import StoreBrand from './StoreBrand.vue'
 import ProductDetail from './ProductDetail.vue'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
 import AccountPanel from './AccountPanel.vue'
+import DiyWorkspace from './DiyWorkspace.vue'
 import { categories, formatPrice, imageFallback, loadProducts, type Category } from './catalog'
 import { useCatalogRequest } from './useCatalogRequest'
 
@@ -19,6 +20,7 @@ const priceRange = ref({ min: 0, max: Infinity })
 const filterError = ref('')
 const showDataNote = ref(false)
 const detailId = ref<string | null>(null)
+const diyOpen = ref(window.location.hash.startsWith('#diy'))
 const { data, status, error, refresh } = useCatalogRequest(
   signal => loadProducts(signal, selectedCategory.value, keyword.value), '商品')
 const products = computed(() => data.value ?? [])
@@ -30,6 +32,7 @@ const visibleProducts = computed(() => {
   return items
 })
 function search() {
+  if (diyOpen.value) window.location.hash = ''
   const next = searchInput.value.trim()
   if (keyword.value === next) void refresh()
   else keyword.value = next
@@ -51,26 +54,31 @@ function resetFilters() {
   priceRange.value = { min: 0, max: Infinity }
 }
 function syncDetail() {
-  detailId.value = window.location.hash.startsWith('#product/') ? window.location.hash.slice(9) : null
+  const hash = window.location.hash
+  if (hash.startsWith('#diy')) diyOpen.value = true
+  else if (hash === '' || hash === '#' || hash.startsWith('#product/')) diyOpen.value = false
+  detailId.value = hash.startsWith('#product/') ? hash.slice(9) : hash.startsWith('#diy/product/') ? hash.slice(13) : null
 }
-function closeDetail() { window.location.hash = '' }
+function closeDetail() { window.location.hash = diyOpen.value ? 'diy' : '' }
 onMounted(() => { void refresh(); syncDetail(); window.addEventListener('hashchange', syncDetail) })
 watch([selectedCategory, keyword], refresh)
 onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
 </script>
 
 <template>
-  <div class="storefront">
+  <div class="storefront" :class="{ 'storefront--diy': diyOpen }">
     <AccountPanel/>
     <header class="header"><div class="header-inner page-width">
       <StoreBrand/>
-      <p class="tagline">专业 · 可靠 · 用心的电脑硬件商城</p>
+      <p v-if="!diyOpen" class="tagline">专业 · 可靠 · 用心的电脑硬件商城</p>
+      <nav class="workspace-nav" aria-label="商城导航"><a href="#" :class="{ active: !diyOpen }"><HardwareIcon name="grid"/>商品浏览</a><a href="#diy" :class="{ active: diyOpen }"><HardwareIcon name="tools"/>DIY 装机</a></nav>
       <form class="search" role="search" @submit.prevent="search"><HardwareIcon name="search"/><input v-model="searchInput" aria-label="搜索商品" placeholder="搜索商品名称、型号或关键词（如：RTX 4070、i5、SSD …）" maxlength="100"/><ElButton native-type="submit" type="primary" class="search-button"><HardwareIcon name="search"/>搜索</ElButton></form>
     </div></header>
-    <nav class="category-nav" aria-label="硬件分类"><div class="nav-inner page-width">
+    <nav v-if="!diyOpen" class="category-nav" aria-label="硬件分类"><div class="nav-inner page-width">
       <button v-for="category in categories" :key="category.code" :class="{ active: selectedCategory === category.code }" :aria-pressed="selectedCategory === category.code" @click="selectedCategory = category.code"><HardwareIcon :name="category.icon"/>{{ category.code === 'COOLER' ? '散热器' : category.label }}</button>
     </div></nav>
-    <main class="main page-width">
+    <DiyWorkspace v-if="diyOpen"/>
+    <main v-else class="main page-width">
       <aside class="sidebar" aria-label="商品筛选">
         <section class="filter-panel category-panel"><h2>商品分类</h2><div class="category-list"><button v-for="category in categories" :key="category.code" :class="{ active: selectedCategory === category.code }" :aria-pressed="selectedCategory === category.code" @click="selectedCategory = category.code"><HardwareIcon :name="category.icon"/><span>{{ category.label }}</span></button></div></section>
         <section class="filter-panel price-panel"><h2>价格区间</h2><form @submit.prevent="applyPrice"><div class="price-inputs"><label><span>¥</span><input v-model="minInput" aria-label="最低价" inputmode="decimal" placeholder="最低价"/></label><span class="range-dash">–</span><label><span>¥</span><input v-model="maxInput" aria-label="最高价" inputmode="decimal" placeholder="最高价"/></label></div><p v-if="filterError" class="filter-error" role="alert">{{ filterError }}</p><ElButton type="primary" native-type="submit">确定</ElButton></form></section>
@@ -87,6 +95,6 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
       </section>
     </main>
     <ProductDetail v-if="detailId !== null" :id="detailId" @close="closeDetail"/>
-    <footer class="footer"><div class="page-width footer-inner"><StoreBrand class="footer-brand"/><p>专业 · 可靠 · 用心的电脑硬件商城</p><span class="footer-note">每一件配件，都为你的下一台电脑。</span></div></footer>
+    <footer v-if="!diyOpen" class="footer"><div class="page-width footer-inner"><StoreBrand class="footer-brand"/><p>专业 · 可靠 · 用心的电脑硬件商城</p><span class="footer-note">每一件配件，都为你的下一台电脑。</span></div></footer>
   </div>
 </template>
