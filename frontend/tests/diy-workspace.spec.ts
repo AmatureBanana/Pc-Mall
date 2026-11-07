@@ -1,0 +1,163 @@
+import { expect, test } from '@playwright/test'
+
+test('F02 workspace: arbitrary order, replacement, removal, cancelled clear and tab refresh', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('link', { name: 'DIY 装机', exact: true }).click()
+  const categories = page.getByRole('navigation', { name: 'DIY 硬件分类' })
+  const configuration = page.getByRole('region', { name: '当前配置' })
+  await expect(categories.getByRole('button')).toHaveCount(8)
+  await categories.getByRole('button', { name: /内存/ }).click()
+  await page.getByRole('button', { name: '选择 金士顿 FURY Beast 32GB (16G×2)', exact: true }).click()
+  await expect(configuration).toContainText('¥899.00')
+  await categories.getByRole('button', { name: /^CPU/ }).click()
+  await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥2,398.00')
+  await page.getByRole('button', { name: '选择 AMD Ryzen 7 7800X3D', exact: true }).click()
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥3,298.00')
+  await expect(configuration).not.toContainText('Intel Core i5-14600KF')
+  await configuration.getByRole('button', { name: '移除 内存', exact: true }).click()
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥2,399.00')
+  await configuration.getByRole('button', { name: '清空配置', exact: true }).click()
+  const confirm = page.getByRole('dialog', { name: '清空当前配置？' })
+  await confirm.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(configuration).toContainText('AMD Ryzen 7 7800X3D')
+  await page.reload()
+  await expect(configuration).toContainText('AMD Ryzen 7 7800X3D')
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥2,399.00')
+  await expect(configuration).toContainText('尚未检测')
+  await page.getByLabel('候选商品排序').selectOption('price-desc')
+  await configuration.getByRole('button', { name: '清空配置', exact: true }).click()
+  await confirm.getByRole('button', { name: '确认清空', exact: true }).click()
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥0.00')
+  await expect(page.getByLabel('候选商品排序')).toHaveValue('default')
+  await page.reload()
+  await expect(configuration).toContainText('已选择 0 / 8 项')
+})
+
+test('quotation failure retains references through reload and retry, without showing an old total', async ({ page }) => {
+  await page.goto('/#diy')
+  const configuration = page.getByRole('region', { name: '当前配置' })
+  await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥1,499.00')
+  await page.route('**/api/diy/quote?*', route => route.fulfill({ status: 503, json: { code: 'CATALOG_UNAVAILABLE' } }))
+  await configuration.getByRole('button', { name: '刷新价格与库存' }).click()
+  await expect(configuration.getByRole('alert')).toContainText('已保留当前选择')
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('报价暂不可用')
+  await page.reload()
+  await expect(configuration).toContainText('已选择 1 / 8 项')
+  await expect(configuration.getByRole('alert')).toContainText('已保留当前选择')
+  await page.unroute('**/api/diy/quote?*')
+  await configuration.getByRole('button', { name: '重试参考报价' }).click()
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥1,499.00')
+  const saved = await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!))
+  expect(saved).toEqual({ version: 1, revision: 1, selections: [{ category: 'CPU', productId: 1, source: 'DIY' }] })
+})
+
+test('a late quotation cannot overwrite a replacement configuration', async ({ page, request }) => {
+  const oldQuote = await (await request.get('/api/diy/quote?revision=1&CPU=1')).json()
+  let release!: () => void
+  let started!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  const pending = new Promise<void>(resolve => { started = resolve })
+  await page.route('**/api/diy/quote?*', async route => {
+    if (new URL(route.request().url()).searchParams.get('revision') !== '1') { await route.continue(); return }
+    started()
+    await gate
+    await route.fulfill({ json: oldQuote })
+  })
+  await page.goto('/#diy')
+  const configuration = page.getByRole('region', { name: '当前配置' })
+  await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
+  await pending
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('正在核价…')
+  await page.getByRole('button', { name: '选择 AMD Ryzen 7 7800X3D', exact: true }).click()
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥2,399.00')
+  release()
+  await page.unrouteAll({ behavior: 'wait' })
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥2,399.00')
+  await expect(configuration).toContainText('配置修订 2')
+  await expect(configuration).not.toContainText('Intel Core i5-14600KF')
+})
+
+test('all eight sales units remain editable with honest pending compatibility and catalog details', async ({ page }) => {
+  await page.goto('/#diy')
+  const categories = page.getByRole('navigation', { name: 'DIY 硬件分类' })
+  const configuration = page.getByRole('region', { name: '当前配置' })
+  const choices = [
+    ['CPU', 'Intel Core i5-14600KF'], ['主板', '华硕 TUF B760M-PLUS WIFI'],
+    ['独立显卡', 'NVIDIA GeForce RTX 4070 SUPER'], ['内存', '金士顿 FURY Beast 32GB (16G×2)'],
+    ['SSD', '三星 990 PRO 1TB'], ['电源', '海盗船 RM750e 全模组电源'],
+    ['机箱', '九州风神 CC560 中塔机箱'], ['独立散热器', '九州风神 AK400 风冷散热器'],
+  ]
+  for (const [category, name] of choices) {
+    await categories.getByRole('button', { name: new RegExp(`^${category}`) }).click()
+    await page.getByRole('button', { name: `选择 ${name}`, exact: true }).click()
+    await expect(configuration.getByRole('link', { name, exact: true })).toBeVisible()
+    if (category === '主板') {
+      await configuration.getByRole('button', { name: '替换 CPU', exact: true }).click()
+      await page.screenshot({ path: '../docs/evidence/task-09-workspace.png', fullPage: true, animations: 'disabled' })
+    }
+  }
+  await expect(configuration).toContainText('已选择 8 / 8 项')
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥10,552.00')
+  await expect(configuration).toContainText('兼容状态：尚未检测')
+  await configuration.getByRole('link', { name: '金士顿 FURY Beast 32GB (16G×2)', exact: true }).click()
+  const detail = page.getByRole('dialog', { name: '商品详情' })
+  await expect(detail.getByRole('row', { name: /实际内存条数/ })).toContainText('2 条')
+  await detail.getByRole('button', { name: '关闭详情' }).click()
+  await expect(page).toHaveURL(/#diy$/)
+  await expect(configuration).toContainText('已选择 8 / 8 项')
+})
+
+test('off-sale and out-of-stock quotation feedback retains the selected SKU and excludes its amount', async ({ page, request }) => {
+  const response = await (await request.get('/api/diy/quote?revision=1&CPU=1')).json()
+  await page.goto('/#diy')
+  const configuration = page.getByRole('region', { name: '当前配置' })
+  await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥1,499.00')
+  // Browser boundary fixtures; real MySQL state transitions are covered by DiyWorkspaceTest.
+  for (const [state, message] of [['OFF_SALE', '商品已下架，请替换。'], ['OUT_OF_STOCK', '商品暂时缺货，请替换。']]) {
+    await page.route('**/api/diy/quote?*', route => route.fulfill({ json: { data: {
+      ...response.data, total: null, validSubtotal: '0.00', items: response.data.items.map((item: object) =>
+        ({ ...item, state, message, amount: null })),
+    } } }))
+    await configuration.getByRole('button', { name: '刷新价格与库存' }).click()
+    await expect(configuration).toContainText(message!)
+    await expect(configuration.getByLabel('当前参考总价')).toHaveText('配置存在问题')
+    await expect(configuration).toContainText('不是完整配置报价')
+    await expect(configuration).toContainText('Intel Core i5-14600KF')
+    await page.unroute('**/api/diy/quote?*')
+  }
+})
+
+test('an authenticated account can enter the same public workspace', async ({ page }) => {
+  await page.goto('/#login')
+  const login = page.getByRole('dialog', { name: '统一登录' })
+  await login.getByLabel('用户名', { exact: true }).fill(process.env.BROWSER_ADMIN_USERNAME!)
+  await login.getByLabel('密码', { exact: true }).fill(process.env.BROWSER_ADMIN_PASSWORD!)
+  await login.getByRole('button', { name: '登录', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: '管理后台' })).toBeVisible()
+  await page.goto('/#diy')
+  await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
+  await expect(page.getByRole('region', { name: '当前配置' }).getByLabel('当前参考总价')).toHaveText('¥1,499.00')
+})
+
+test('damaged tab storage is reported without deleting it and a new edit can recover', async ({ page }) => {
+  await page.addInitScript(() => sessionStorage.setItem('pc-mall.diy.workspace.v1', '{broken'))
+  await page.goto('/#diy')
+  await expect(page.getByRole('alert')).toContainText('原存储未删除')
+  expect(await page.evaluate(() => sessionStorage.getItem('pc-mall.diy.workspace.v1'))).toBe('{broken')
+  await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
+  await expect(page.getByRole('region', { name: '当前配置' }).getByLabel('当前参考总价')).toHaveText('¥1,499.00')
+  await expect(page.getByText('原存储未删除', { exact: false })).toHaveCount(0)
+})
+
+test('unavailable session storage does not prevent editing or clear the in-memory configuration', async ({ page }) => {
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => { throw new DOMException('Quota exceeded', 'QuotaExceededError') }
+  })
+  await page.goto('/#diy')
+  await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
+  await expect(page.getByRole('alert')).toContainText('当前选择仍可编辑')
+  await expect(page.getByRole('region', { name: '当前配置' }).getByLabel('当前参考总价')).toHaveText('¥1,499.00')
+})

@@ -54,7 +54,7 @@ class WebSecurity {
                 .authorizeHttpRequests(authorize -> authorize
                     .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                     .requestMatchers(HttpMethod.GET, "/", "/index.html", "/assets/**", "/images/**", "/favicon.svg",
-                            "/api/products", "/api/products/*", "/api/auth/csrf").permitAll()
+                            "/api/products", "/api/products/*", "/api/diy/quote", "/api/auth/csrf").permitAll()
                     .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login",
                             "/api/compatibility/check", "/api/recommendations").permitAll()
                     .requestMatchers("/api/admin/**").hasRole("ADMIN")

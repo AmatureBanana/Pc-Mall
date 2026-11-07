@@ -27,7 +27,7 @@ export interface ProductDetail {
   product: Product; description: string; parameters: ProductParameter[]; dataVersion: string
   performance?: import('./performance').PerformanceScore
 }
-function isProduct(value: unknown): value is Product {
+export function isProductIdentity(value: unknown): value is ProductIdentity {
   if (!value || typeof value !== 'object') return false
   const item = value as Record<string, unknown>
   const textFields = ['sku', 'name', 'categoryLabel', 'brand', 'model', 'summary', 'imageUrl', 'sourceUrl', 'priceNote']
@@ -37,7 +37,10 @@ function isProduct(value: unknown): value is Product {
     && typeof item.price === 'string' && /^\d+\.\d{2}$/.test(item.price)
     && Number.isSafeInteger(item.stock) && Number(item.stock) >= 0
     && Number.isSafeInteger(item.revision) && Number(item.revision) >= 0
-    && Array.isArray(item.performanceTags) && item.performanceTags.length > 0 && item.performanceTags.every(isPerformanceTag)
+}
+function isProduct(value: unknown): value is Product {
+  return isProductIdentity(value) && 'performanceTags' in value && Array.isArray(value.performanceTags)
+    && value.performanceTags.length > 0 && value.performanceTags.every(isPerformanceTag)
 }
 export async function loadProducts(signal: AbortSignal, category: Category = 'ALL', keyword = ''): Promise<Product[]> {
   const query = new URLSearchParams()
