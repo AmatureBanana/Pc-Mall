@@ -5,6 +5,7 @@ import { adminModules, AuthError, currentAccount, loginAccount, writeAuth, type 
 import ProfilePanel from './ProfilePanel.vue'
 import CatalogAdministration from './CatalogAdministration.vue'
 import UserAdministration from './UserAdministration.vue'
+import { beginWorkspaceSignIn, endWorkspaceSignIn, signInOrigin, seenBaseline, restorationPending, workspaceActive } from './workspaceSession'
 
 const user = ref<Account | null>(null)
 const route = ref('')
@@ -24,9 +25,31 @@ const authOpen = computed(() => route.value === 'login' || route.value === 'regi
 const adminOpen = computed(() => route.value === 'admin' || route.value.startsWith('admin/'))
 let identityRevision = 0
 let adminRevision = 0
+let authFlowRevision = 0
 
 function navigate(target = '') { window.location.hash = target }
-function syncRoute() { route.value = window.location.hash.slice(1) }
+/** Remembers that this sign-in started in the workspace and freezes what the user had seen. */
+function openAuth(target: 'login' | 'register') {
+  authFlowRevision++
+  beginWorkspaceSignIn(workspaceActive.value)
+  navigate(target)
+}
+/** Cancelling or failing sends the user back to where they opened the unified login. */
+function closeAuth() {
+  const returnTo = signInOrigin.value === 'diy' ? 'diy' : ''
+  authFlowRevision++
+  endWorkspaceSignIn()
+  navigate(returnTo)
+}
+function syncRoute() {
+  const next = window.location.hash.slice(1)
+  if (authOpen.value && next !== 'login' && next !== 'register') {
+    authFlowRevision++
+    // Success explicitly transfers the baseline to the workspace before leaving the auth route.
+    if (signInOrigin.value !== null) endWorkspaceSignIn()
+  }
+  route.value = next
+}
 function clearSecrets() { password.value = confirmPassword.value = '' }
 function feedback(cause: unknown) {
   error.value = cause instanceof Error ? cause.message : '操作未完成，请稍后重试。'
@@ -63,6 +86,9 @@ async function loadAdmin() {
 }
 async function submit() {
   if (busy.value) return
+  const flow = authFlowRevision
+  const origin = signInOrigin.value
+  const baseline = seenBaseline.value
   identityRevision++
   busy.value = true
   error.value = ''
@@ -72,15 +98,38 @@ async function submit() {
       if (password.value !== confirmPassword.value) throw new Error('两次输入的密码不一致。')
       await writeAuth('register', { username: username.value, nickname: nickname.value, password: password.value, confirmPassword: confirmPassword.value })
       clearSecrets()
+      if (flow !== authFlowRevision || !authOpen.value) return
       notice.value = '注册成功，请登录。'
       navigate('login')
     } else {
       user.value = await loginAccount(username.value, password.value)
       clearSecrets()
       sessionError.value = ''
-      navigate(user.value.role === 'ADMIN' ? 'admin' : '')
+      // Closing or navigating away cannot cancel a session already created by the server. Accept
+      // that identity, but a stale response must not navigate over the user's current destination.
+      if (flow !== authFlowRevision || !authOpen.value) {
+        if (origin === 'diy' && user.value.role === 'USER' && workspaceActive.value) {
+          seenBaseline.value = baseline
+          restorationPending.value = true
+        }
+        return
+      }
+      // A sign-in that started in the workspace returns there and revalidates the same references.
+      // An administrator is still sent to the administration surface, matching the existing contract.
+      if (origin === 'diy' && user.value.role === 'USER') {
+        endWorkspaceSignIn(true)
+        restorationPending.value = true
+        navigate('diy')
+      } else if (user.value.role === 'ADMIN') {
+        endWorkspaceSignIn()
+        navigate('admin')
+      } else {
+        endWorkspaceSignIn()
+        navigate('')
+      }
+      // The frozen baseline is deliberately kept: the workspace consumes it when it restores.
     }
-  } catch (cause) { feedback(cause) }
+  } catch (cause) { if (flow === authFlowRevision && authOpen.value) feedback(cause) }
   finally { busy.value = false }
 }
 async function logout() {
@@ -120,7 +169,7 @@ onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.
   <div class="account-bar"><div class="page-width account-bar-inner">
     <span class="account-welcome">欢迎来到装机猫</span>
     <span v-if="user" class="account-name">{{ user.nickname }} <small>{{ user.role === 'ADMIN' ? '管理员' : '普通用户' }}</small></span>
-    <template v-else><button @click="navigate('login')">登录</button><button @click="navigate('register')">注册</button></template>
+    <template v-else><button @click="openAuth('login')">登录</button><button @click="openAuth('register')">注册</button></template>
     <button v-if="user?.role === 'ADMIN'" @click="navigate('admin')">管理后台</button>
     <button v-if="user" @click="navigate('profile')">个人资料</button>
     <button v-if="user" :disabled="busy || profileBusy" @click="logout">退出登录</button>
@@ -128,7 +177,7 @@ onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.
     <span v-else-if="notice && !authOpen" role="status">{{ notice }}</span>
   </div></div>
 
-  <ElDialog :model-value="authOpen" :title="route === 'register' ? '注册账户' : '统一登录'" width="440px" class="auth-dialog" :close-on-click-modal="false" @close="authOpen && navigate()">
+  <ElDialog :model-value="authOpen" :title="route === 'register' ? '注册账户' : '统一登录'" width="440px" class="auth-dialog" :close-on-click-modal="false" @close="authOpen && closeAuth()">
     <p class="auth-intro">{{ route === 'register' ? '创建普通账户，开始你的装机之旅。' : '普通用户与管理员使用同一入口。' }}</p>
     <p v-if="notice" role="status" class="auth-success">{{ notice }}</p>
     <p v-if="error" role="alert" class="auth-error">{{ error }}</p>
