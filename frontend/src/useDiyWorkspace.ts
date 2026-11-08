@@ -1,7 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Product } from './catalog'
 import {
-  describeRestoration, loadCompatibility, loadQuote, readSeen, rememberSeen, restoreWorkspace, saveWorkspace,
+  describeRestoration, loadCompatibility, loadQuote, maxDiyMemoryQuantity, readSeen, rememberSeen, restoreWorkspace, saveWorkspace,
   type HardwareCategory, type Restoration, type Selection,
 } from './diy'
 import { useCatalogRequest } from './useCatalogRequest'
@@ -24,14 +24,31 @@ export function useDiyWorkspace() {
   let restoreAttempt = 0
   const count = computed(() => workspace.value.selections.length + (workspace.value.integratedGraphicsCpuId ? 1 : 0))
 
-  function change(selections: Selection[], integratedGraphicsCpuId = workspace.value.integratedGraphicsCpuId) {
+  function change(selections: Selection[], integratedGraphicsCpuId = workspace.value.integratedGraphicsCpuId,
+    memoryQuantity = workspace.value.memoryQuantity ?? 1) {
     const cpu = selections.find(item => item.category === 'CPU')
     workspace.value = { version: 1, revision: workspace.value.revision + 1, selections,
+      ...(memoryQuantity > 1 && selections.some(item => item.category === 'MEMORY') ? { memoryQuantity } : {}),
       ...(integratedGraphicsCpuId && cpu?.productId === integratedGraphicsCpuId && !selections.some(item => item.category === 'GPU')
         ? { integratedGraphicsCpuId } : {}) }
     storageWarning.value = saveWorkspace(workspace.value)
     void quotation.refresh()
     void compatibility.refresh()
+  }
+  const memoryQuantity = computed(() => workspace.value.memoryQuantity ?? 1)
+  const memorySlots = computed(() => compatibility.data.value?.memorySlots ?? null)
+  const memoryLimit = computed(() => {
+    const memory = quotation.data.value?.items.find(item => item.category === 'MEMORY')
+    const board = quotation.data.value?.items.find(item => item.category === 'MOTHERBOARD')
+    if (board?.state !== 'VALID' || !memory?.product
+      || !['VALID', 'OUT_OF_STOCK'].includes(memory.state)) return 1
+    return Math.max(1, Math.min(maxDiyMemoryQuantity, memorySlots.value ?? 1, memory.product.stock))
+  })
+  function setMemoryQuantity(quantity: number) {
+    if (!workspace.value.selections.some(item => item.category === 'MEMORY')
+      || !Number.isInteger(quantity) || quantity < 1 || quantity === memoryQuantity.value
+      || (quantity > memoryQuantity.value && quantity > memoryLimit.value)) return
+    change(workspace.value.selections, workspace.value.integratedGraphicsCpuId, quantity)
   }
   function select(product: Product) {
     if (product.stock < 1 || workspace.value.selections.some(selection => selection.category === product.category && selection.productId === product.id)) return
@@ -47,10 +64,6 @@ export function useDiyWorkspace() {
     change(workspace.value.selections.filter(item => item.category !== 'GPU'), cpuId)
   }
   function clear() { if (count.value) change([]) }
-  function save() {
-    storageWarning.value = saveWorkspace(workspace.value)
-    return !storageWarning.value
-  }
   // The active restoration already performs both authoritative reads. Background events must not
   // abort its requests; edits still refresh immediately and supersede the old restoration.
   const revalidate = () => {
@@ -123,6 +136,7 @@ export function useDiyWorkspace() {
     document.removeEventListener('visibilitychange', onVisible)
     window.clearInterval(refreshTimer)
   })
-  return { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear, save,
+  return { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear,
+    memoryQuantity, memorySlots, memoryLimit, setMemoryQuantity,
     quotation, compatibility, restoration, restore, dismissRestoration }
 }

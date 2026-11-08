@@ -7,8 +7,14 @@ import ProductDetail from './ProductDetail.vue'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
 import AccountPanel from './AccountPanel.vue'
 import DiyWorkspace from './DiyWorkspace.vue'
+import CartPanel from './CartPanel.vue'
 import { categories, formatPrice, imageFallback, loadProducts, type Category } from './catalog'
 import { useCatalogRequest } from './useCatalogRequest'
+import { signedIn } from './auth'
+import { useCart } from './cart'
+
+const { count: cartCount } = useCart()
+function openCart() { window.location.hash = 'cart' }
 
 const selectedCategory = ref<Category>('ALL')
 const searchInput = ref('')
@@ -21,6 +27,7 @@ const filterError = ref('')
 const showDataNote = ref(false)
 const detailId = ref<string | null>(null)
 const diyOpen = ref(window.location.hash.startsWith('#diy'))
+const cartOpen = ref(window.location.hash === '#cart')
 const { data, status, error, refresh } = useCatalogRequest(
   signal => loadProducts(signal, selectedCategory.value, keyword.value), '商品')
 const products = computed(() => data.value ?? [])
@@ -32,7 +39,7 @@ const visibleProducts = computed(() => {
   return items
 })
 function search() {
-  if (diyOpen.value) window.location.hash = ''
+  if (diyOpen.value || cartOpen.value) window.location.hash = ''
   const next = searchInput.value.trim()
   if (keyword.value === next) void refresh()
   else keyword.value = next
@@ -55,30 +62,39 @@ function resetFilters() {
 }
 function syncDetail() {
   const hash = window.location.hash
+  cartOpen.value = hash === '#cart'
   if (hash.startsWith('#diy')) diyOpen.value = true
   else if (hash === '' || hash === '#' || hash.startsWith('#product/')) diyOpen.value = false
   detailId.value = hash.startsWith('#product/') ? hash.slice(9) : hash.startsWith('#diy/product/') ? hash.slice(13) : null
 }
 function closeDetail() { window.location.hash = diyOpen.value ? 'diy' : '' }
-onMounted(() => { void refresh(); syncDetail(); window.addEventListener('hashchange', syncDetail) })
+/** The unified login is the only sign-in surface, so the detail dialog hands over to it. */
+function openDetailSignIn() { window.location.hash = 'login' }
+onMounted(() => {
+  void refresh(); syncDetail()
+  window.addEventListener('hashchange', syncDetail)
+})
 watch([selectedCategory, keyword], refresh)
 onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
 </script>
 
 <template>
-  <div class="storefront" :class="{ 'storefront--diy': diyOpen }">
+  <div class="storefront" :class="{ 'storefront--diy': diyOpen && !cartOpen, 'storefront--cart': cartOpen }">
     <AccountPanel/>
     <header class="header"><div class="header-inner page-width">
       <StoreBrand/>
-      <p v-if="!diyOpen" class="tagline">专业 · 可靠 · 用心的电脑硬件商城</p>
-      <nav class="workspace-nav" aria-label="商城导航"><a href="#" :class="{ active: !diyOpen }"><HardwareIcon name="grid"/>商品浏览</a><a href="#diy" :class="{ active: diyOpen }"><HardwareIcon name="tools"/>DIY 装机</a></nav>
+      <p v-if="!diyOpen && !cartOpen" class="tagline">专业 · 可靠 · 用心的电脑硬件商城</p>
+      <nav class="workspace-nav" aria-label="商城导航"><a href="#" :class="{ active: !diyOpen && !cartOpen }"><HardwareIcon name="grid"/>商品浏览</a><a href="#diy" :class="{ active: diyOpen && !cartOpen }"><HardwareIcon name="tools"/>DIY 装机</a></nav>
       <form class="search" role="search" @submit.prevent="search"><HardwareIcon name="search"/><input v-model="searchInput" aria-label="搜索商品" placeholder="搜索商品名称、型号或关键词（如：RTX 4070、i5、SSD …）" maxlength="100"/><ElButton native-type="submit" type="primary" class="search-button"><HardwareIcon name="search"/>搜索</ElButton></form>
+      <button v-if="signedIn" type="button" class="header-cart" :aria-current="cartOpen ? 'page' : undefined" @click="openCart"><HardwareIcon name="cart"/>购物车<span v-if="cartCount" class="cart-count" :aria-label="`购物车共 ${cartCount} 件`">{{ cartCount }}</span><HardwareIcon name="chevron-right"/></button>
     </div></header>
-    <nav v-if="!diyOpen" class="category-nav" aria-label="硬件分类"><div class="nav-inner page-width">
+    <nav v-if="!diyOpen && !cartOpen" class="category-nav" aria-label="硬件分类"><div class="nav-inner page-width">
       <button v-for="category in categories" :key="category.code" :class="{ active: selectedCategory === category.code }" :aria-pressed="selectedCategory === category.code" @click="selectedCategory = category.code"><HardwareIcon :name="category.icon"/>{{ category.code === 'COOLER' ? '散热器' : category.label }}</button>
     </div></nav>
-    <DiyWorkspace v-if="diyOpen"/>
-    <main v-else class="main page-width">
+    <DiyWorkspace v-if="diyOpen" v-show="!cartOpen"/>
+    <CartPanel v-if="cartOpen && signedIn" @close="closeDetail"/>
+    <main v-else-if="cartOpen" class="page-width" aria-label="我的购物车"><ElEmpty description="请先登录查看购物车。"><ElButton type="primary" @click="openDetailSignIn">前往登录</ElButton></ElEmpty></main>
+    <main v-else-if="!diyOpen" class="main page-width">
       <aside class="sidebar" aria-label="商品筛选">
         <section class="filter-panel category-panel"><h2>商品分类</h2><div class="category-list"><button v-for="category in categories" :key="category.code" :class="{ active: selectedCategory === category.code }" :aria-pressed="selectedCategory === category.code" @click="selectedCategory = category.code"><HardwareIcon :name="category.icon"/><span>{{ category.label }}</span></button></div></section>
         <section class="filter-panel price-panel"><h2>价格区间</h2><form @submit.prevent="applyPrice"><div class="price-inputs"><label><span>¥</span><input v-model="minInput" aria-label="最低价" inputmode="decimal" placeholder="最低价"/></label><span class="range-dash">–</span><label><span>¥</span><input v-model="maxInput" aria-label="最高价" inputmode="decimal" placeholder="最高价"/></label></div><p v-if="filterError" class="filter-error" role="alert">{{ filterError }}</p><ElButton type="primary" native-type="submit">确定</ElButton></form></section>
@@ -94,7 +110,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
         <div v-if="showDataNote" class="data-note"><h2>关于演示数据</h2><p>商品型号来自品牌公开资料；图片为本站绘制的品类示意图，不代表具体型号外观。价格和库存是数据库中的演示值，刷新页面可获取当前值。</p><ul><li v-for="product in products" :key="product.id"><a :href="product.sourceUrl" target="_blank" rel="noopener noreferrer">{{ product.name }} · 厂商资料</a></li></ul></div>
       </section>
     </main>
-    <ProductDetail v-if="detailId !== null" :id="detailId" @close="closeDetail"/>
-    <footer v-if="!diyOpen" class="footer"><div class="page-width footer-inner"><StoreBrand class="footer-brand"/><p>专业 · 可靠 · 用心的电脑硬件商城</p><span class="footer-note">每一件配件，都为你的下一台电脑。</span></div></footer>
+    <ProductDetail v-if="detailId !== null" :id="detailId" :signed-in="signedIn" @close="closeDetail" @sign-in="openDetailSignIn"/>
+    <footer v-if="!diyOpen && !cartOpen" class="footer"><div class="page-width footer-inner"><StoreBrand class="footer-brand"/><p>专业 · 可靠 · 用心的电脑硬件商城</p><span class="footer-note">每一件配件，都为你的下一台电脑。</span></div></footer>
   </div>
 </template>

@@ -198,7 +198,7 @@ class CatalogAdministrationTest {
                         parameter("memorySlots",4,"个"),parameter("displayOutputs",List.of("HDMI"),""),parameter("gpuInterfaces",List.of("PCIe x16"),""),
                         parameter("ssdSlots",List.of(Map.of("formFactor","M.2 2280","interface","PCIe","protocol","NVMe")),"")),
                 "GPU",List.of(parameter("installationInterface","PCIe x16",""),parameter("boardPowerEstimate",220,"W"),parameter("length",244,"mm"),parameter("displayOutputs",List.of("DisplayPort"),"")),
-                "MEMORY",List.of(parameter("generation","DDR5",""),parameter("stickCount",2,"条"),parameter("totalCapacity",32,"GB"),parameter("capacityPerStick",16,"GB")),
+                "MEMORY",List.of(parameter("generation","DDR5",""),parameter("stickCount",1,"条"),parameter("totalCapacity",16,"GB"),parameter("capacityPerStick",16,"GB")),
                 "SSD",List.of(parameter("capacity",new java.math.BigDecimal("1099.511627776"),"GB"),parameter("originalCapacity",1,"TiB"),parameter("formFactor","M.2 2280",""),parameter("interface","PCIe",""),parameter("protocol","NVMe","")),
                 "PSU",List.of(parameter("ratedPower",750,"W")),
                 "CASE",List.of(parameter("supportedMotherboardFormFactors",List.of("ATX","Micro-ATX"),""),parameter("maxGpuLength",370,"mm"),parameter("maxCoolerHeight",163,"mm")),
@@ -224,6 +224,19 @@ class CatalogAdministrationTest {
             }
             assertThat(post(admin,"/api/admin/products/" + id + "/status",Map.of("revision",1,"status","OFF_SALE")).statusCode()).isEqualTo(200);
         }
+    }
+
+    @Test void aMemoryKitCannotBePublishedAsOneProduct() throws Exception {
+        var input = fullProduct(prefix + "memorykit", "MEMORY");
+        input.set("parameters", json.valueToTree(List.of(parameter("generation","DDR5",""),
+                parameter("stickCount",2,"条"), parameter("totalCapacity",32,"GB"), parameter("capacityPerStick",16,"GB"))));
+        var created = post(admin, "/api/admin/products", input);
+        assertThat(created.statusCode()).isEqualTo(201);
+        long id = data(created).path("product").path("id").asLong();
+        var published = post(admin, "/api/admin/products/" + id + "/status", Map.of("revision",0,"status","ON_SALE"));
+        assertThat(published.statusCode()).isEqualTo(400);
+        assertThat(published.body()).contains("实际条数必须为 1 条");
+        assertThat(get(browser(), "/api/products/" + id).statusCode()).isEqualTo(409);
     }
 
     @Test void existingIntelProductRemainsEditableWithItsVerifiedCoreAndThreadUnits() throws Exception {

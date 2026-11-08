@@ -4,5 +4,6 @@ import cn.zhuangjimao.catalog.HardwareCategory;
 import com.fasterxml.jackson.databind.JsonNode;
 
 /** A server-side catalog record as the rules see it: only what a rule can actually read. */
-record Part(HardwareCategory category, JsonNode parameters) {
+record Part(HardwareCategory category, JsonNode parameters, int quantity) {
+    Part(HardwareCategory category, JsonNode parameters) { this(category, parameters, 1); }
 }

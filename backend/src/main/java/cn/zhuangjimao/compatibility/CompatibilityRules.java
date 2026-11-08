@@ -92,7 +92,7 @@ public final class CompatibilityRules {
         return read.result("C01", RuleState.FAIL, "CPU 插槽为 " + cpu + "，主板插槽为 " + board + "，无法安装。");
     }
 
-    /** C02: the kit generation must be supported and its real stick count must fit the slots. */
+    /** C02: the memory generation must be supported and the installed sticks must fit the slots. */
     private static RuleResult memory(Map<HardwareCategory, Part> parts) {
         var read = new Read(parts,
                 Field.of(MOTHERBOARD, "memoryGenerations"), Field.of(MOTHERBOARD, "memorySlots"),
@@ -106,14 +106,16 @@ public final class CompatibilityRules {
                     "内存为 " + generation + "，主板支持 " + String.join("、", generations) + "，不能安装。");
         }
         if (read.usable(MOTHERBOARD, "memorySlots") && read.usable(MEMORY, "stickCount")) {
-            long slots = read.integer(MOTHERBOARD, "memorySlots"), sticks = read.integer(MEMORY, "stickCount");
+            long slots = read.integer(MOTHERBOARD, "memorySlots");
+            long sticks = read.integer(MEMORY, "stickCount") * parts.get(MEMORY).quantity();
             if (sticks > slots) return read.result("C02", RuleState.FAIL,
-                        "套装实际 " + sticks + " 条，主板仅有 " + slots + " 个内存插槽，无法全部安装。");
+                        "已选内存共 " + sticks + " 条，主板仅有 " + slots + " 个内存插槽，无法全部安装。");
         }
-        if (!read.allUsable()) return read.unknown("C02", "内存代际、插槽数或套装条数缺少已核验值或来源，无法判断。");
-        long slots = read.integer(MOTHERBOARD, "memorySlots"), sticks = read.integer(MEMORY, "stickCount");
+        if (!read.allUsable()) return read.unknown("C02", "内存代际、插槽数或内存条数缺少已核验值或来源，无法判断。");
+        long slots = read.integer(MOTHERBOARD, "memorySlots");
+        long sticks = read.integer(MEMORY, "stickCount") * parts.get(MEMORY).quantity();
         return read.result("C02", RuleState.PASS,
-                generation + " " + sticks + " 条套装可装入 " + slots + " 个插槽，代际受支持。");
+                generation + " 内存共 " + sticks + " 条，可装入 " + slots + " 个插槽。");
     }
 
     /** C03: the CPU socket must appear in the cooler's verified support list. */

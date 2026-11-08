@@ -142,12 +142,12 @@ VALUES('INTEL-I5-14600K','Intel Core i5-14600K','CPU','Intel','i5-14600K','Intel
 
 
 def scenarios():
-    shared = ["ASUS-TUF-B760M-PLUS-WIFI", "KINGSTON-KF560C36BBEK2-32", "SAMSUNG-MZ-V9P1T0BW", "CORSAIR-CP-9020295", "DEEPCOOL-CC560", "DEEPCOOL-AK400"]
+    shared = ["ASUS-TUF-B760M-PLUS-WIFI", "KINGSTON-KF560C36BBE2-16", "SAMSUNG-MZ-V9P1T0BW", "CORSAIR-CP-9020295", "DEEPCOOL-CC560", "DEEPCOOL-AK400"]
     return {
         "note": "仅为后续规则/推荐的真实候选数据，不是已执行兼容引擎的通过结果。全部售价与库存均为商城演示值。",
-        "office": {"skus": ["INTEL-I5-14600K"] + shared, "demoTotalCny": "5653.00", "graphics": "UHD 770 + 主板HDMI/DisplayPort"},
-        "gaming": {"skus": ["INTEL-I5-14600KF", "NVIDIA-RTX4070SUPER-FE"] + shared, "demoTotalCny": "10552.00", "graphics": "RTX 4070 SUPER FE"},
-        "creation": {"skus": ["INTEL-I5-14600K", "NVIDIA-RTX4070SUPER-FE"] + shared, "demoTotalCny": "10652.00", "graphics": "RTX 4070 SUPER FE"},
+        "office": {"skus": ["INTEL-I5-14600K"] + shared, "demoTotalCny": "5203.50", "graphics": "UHD 770 + 主板HDMI/DisplayPort"},
+        "gaming": {"skus": ["INTEL-I5-14600KF", "NVIDIA-RTX4070SUPER-FE"] + shared, "demoTotalCny": "10102.50", "graphics": "RTX 4070 SUPER FE"},
+        "creation": {"skus": ["INTEL-I5-14600K", "NVIDIA-RTX4070SUPER-FE"] + shared, "demoTotalCny": "10202.50", "graphics": "RTX 4070 SUPER FE"},
     }
 
 

@@ -6,7 +6,7 @@
 
 ## 固定策略与有效性
 
-`PerformanceScores` 是后端统一的确定性入口，使用 BigDecimal、线性插值，结果按 HALF_UP 保留6位小数。CPU原始节点0/50/200/450/800、GPU原始节点0/500/2000/4500/8000均对应0/25/50/75/100；RAM节点0/8/16/32 GB对应0/50/80/100，SSD节点0/256/512/1000 GB对应0/40/75/100。输入达到满分后封顶100，负数拒绝，缺值返回空分。SSD 1TB=1000GB，1GiB=1.073741824GB，1TiB=1099.511627776GB；RAM读取套装总容量，不将条数当容量。
+`PerformanceScores` 是后端统一的确定性入口，使用 BigDecimal、线性插值，结果按 HALF_UP 保留6位小数。CPU原始节点0/50/200/450/800、GPU原始节点0/500/2000/4500/8000均对应0/25/50/75/100；RAM节点0/8/16/32 GB对应0/50/80/100，SSD节点0/256/512/1000 GB对应0/40/75/100。输入达到满分后封顶100，负数拒绝，缺值返回空分。SSD 1TB=1000GB，1GiB=1.073741824GB，1TiB=1099.511627776GB；RAM 读取商品标称容量，当前在售内存按单根计量。
 
 CPU/GPU的有效参考固定Blender 4.3.0、Windows及明确后端：CPU用CPU，NVIDIA用OPTIX，AMD用HIP。每份提交完整覆盖classroom/junkshop/monster，先求单次完整提交的总分，再取提交总分的中位数。后台维护采用至少3个可追溯独立UUID的准入要求，并要求来源、快照日期/SHA-256、采样条件与型号映射依据齐全；管理员负责核验录入的外部证据。服务端不在线抓取来源URL，也不把来源格式校验冒称为自动验证第三方事实。
 
@@ -69,6 +69,6 @@ python scripts/performance-data.py --write --snapshot .local/task-08-data/openda
 
 RTX4070 SUPER FE对应 [NVIDIA官方规格](https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/rtx-4070-family/)及[官方指南](https://www.nvidia.com/content/geforce-gtx/GEFORCE_RTX_4070_SUPER_User_Guide_Rev1.pdf)：12GB、220W、244mm；Blender只作型号参考。其余商品沿用 [参数核验记录](catalog-parameters.md)。
 
-三场景均复用ASUS DDR5版B760M、Kingston 32GB双条、Samsung 990 PRO 1TB、RM750e 750W、CC560及AK400；办公用14600K核显，游戏用14600KF+4070SUPER，创作用14600K+4070SUPER。演示总价分别5653、10552、10652 CNY，具体SKU见scenarios.json。
+三场景均复用ASUS DDR5版B760M、Kingston 16 GB 单根、Samsung 990 PRO 1TB、RM750e 750W、CC560及AK400；办公用14600K核显，游戏用14600KF+4070SUPER，创作用14600K+4070SUPER。演示总价分别为 5203.50、10102.50、10202.50 CNY，具体SKU见scenarios.json。
 
 按冻结功率估算，办公340W、独显方案626W，现有750W满足模型；显卡244mm/机箱370mm、散热155mm/机箱163mm等核心输入齐备。这里只交付后续F03/F04的候选数据，未运行尚未实现的兼容或推荐引擎，不宣称实机、BIOS、内存超频或散热表现已验证。AMD等未纳入受控包的商品仍无有效参考分；故意缺失或伪造数据仅在测试夹具中出现。

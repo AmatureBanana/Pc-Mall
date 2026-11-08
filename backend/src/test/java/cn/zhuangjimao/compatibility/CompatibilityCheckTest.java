@@ -36,6 +36,29 @@ class CompatibilityCheckTest {
     @Autowired JdbcTemplate db;
 
     @Test
+    void requestedMemoryModulesMustFitVerifiedBoardSlots() throws Exception {
+        long board = cloneProduct(3);
+        long memory = db.queryForObject("SELECT id FROM products WHERE sku='KINGSTON-KF560C36BBE2-16'", Long.class);
+        try {
+            String config = COMPLETE.replace("\"MOTHERBOARD\":3", "\"MOTHERBOARD\":" + board)
+                    .replace("\"MEMORY\":7", "\"MEMORY\":" + memory);
+            String four = config.replaceFirst("\\{", "{\"memoryQuantity\":4,");
+            String two = config.replaceFirst("\\{", "{\"memoryQuantity\":2,");
+            JsonNode pass = json.readTree(check(four).body()).path("data");
+            assertThat(pass.path("memorySlots").asInt()).isEqualTo(4);
+            assertThat(pass.path("corePassed").asBoolean()).isTrue();
+
+            setParameter(board, "memorySlots", json.getNodeFactory().numberNode(2));
+            JsonNode fail = json.readTree(check(four).body()).path("data");
+            assertThat(fail.path("memorySlots").asInt()).isEqualTo(2);
+            assertThat(rule(fail, "C02").path("state").asText()).isEqualTo("FAIL");
+            assertThat(rule(fail, "C02").path("message").asText()).contains("4 条", "2 个内存插槽");
+            assertThat(json.readTree(check(two).body()).path("data").path("corePassed").asBoolean()).isTrue();
+            assertThat(check(four.replace("\"memoryQuantity\":4", "\"memoryQuantity\":5")).statusCode()).isEqualTo(400);
+        } finally { deleteProduct(board); }
+    }
+
+    @Test
     void realCatalogPowerAndSpaceBoundariesAreReevaluatedOnEveryRequest() throws Exception {
         long psu = cloneProduct(11), box = cloneProduct(12);
         try {

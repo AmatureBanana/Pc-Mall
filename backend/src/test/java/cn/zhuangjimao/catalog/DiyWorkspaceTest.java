@@ -27,12 +27,11 @@ class DiyWorkspaceTest {
 
     @Test
     void guestQuotesArbitraryOrderWithOneSalesUnitPerCategoryAndExactMoney() throws Exception {
-        // V2 fixture: a two-stick kit is one sales unit, 899 + 1499, never 899 * 2.
-        var response = ProductBrowserTest.get(app, "/api/diy/quote?revision=7&MEMORY=7&CPU=1");
+        var response = ProductBrowserTest.get(app, "/api/diy/quote?revision=7&CPU=1&MEMORY=" + ProductBrowserTest.memoryModuleId(app));
         assertThat(response.statusCode()).isEqualTo(200);
         JsonNode quote = json.readTree(response.body()).path("data");
         assertThat(quote.path("revision").asInt()).isEqualTo(7);
-        assertThat(quote.path("total").asText()).isEqualTo("2398.00");
+        assertThat(quote.path("total").asText()).isEqualTo("1948.50");
         assertThat(quote.path("compatibility").asText()).isEqualTo("NOT_CHECKED");
         assertThat(quote.path("items").size()).isEqualTo(2);
         for (JsonNode item : quote.path("items")) {
@@ -40,6 +39,15 @@ class DiyWorkspaceTest {
             assertThat(item.path("quantity").asInt()).isEqualTo(1);
             assertThat(item.path("product").path("sku").asText()).isNotBlank();
         }
+    }
+
+    @Test
+    void fourMemoryModulesQuoteFourSingleModulePrices() throws Exception {
+        String query = "revision=12&MEMORY=" + ProductBrowserTest.memoryModuleId(app) + "&memoryQuantity=";
+        var quote = read(query + "4");
+        assertThat(quote.path("total").asText()).isEqualTo("1798.00");
+        assertThat(quote.path("items").get(0).path("quantity").asInt()).isEqualTo(4);
+        assertThat(ProductBrowserTest.get(app, "/api/diy/quote?" + query + "5").statusCode()).isEqualTo(400);
     }
 
     @Test
@@ -58,9 +66,9 @@ class DiyWorkspaceTest {
 
     @Test
     void missingOrWrongCategorySelectionsRemainVisibleAndPreventAFullQuote() throws Exception {
-        var quote = read("revision=9&CPU=7&CASE=9007199254740991&MEMORY=7");
+        var quote = read("revision=9&CPU=7&CASE=9007199254740991&MEMORY=" + ProductBrowserTest.memoryModuleId(app));
         assertThat(quote.path("total").isNull()).isTrue();
-        assertThat(quote.path("validSubtotal").asText()).isEqualTo("899.00");
+        assertThat(quote.path("validSubtotal").asText()).isEqualTo("449.50");
         assertThat(quote.path("items").size()).isEqualTo(3);
         assertThat(quote.path("items").findValuesAsText("state"))
                 .containsExactlyInAnyOrder("CATEGORY_MISMATCH", "NOT_FOUND", "VALID");

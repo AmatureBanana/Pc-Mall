@@ -12,7 +12,7 @@
 
 选择核显时提交与 `CPU` 商品 ID 相同的 `integratedGraphicsCpuId`，并省略 `GPU`。该字段仅表示明确选择 CPU 自带核显，不能代替服务端核显能力核验，也不包含价格或参数。
 
-`revision` 是非负安全整数；商品 ID 是正安全整数。重复键、错误类别、类别与实际商品不符、客户端参数/金额/通过标识/规则开关或规则版本覆盖均拒绝 400/`INVALID_CONFIGURATION`。后台没有停用或绕过核心规则的入口。接口不改变库存或保存工作区，响应带 `Cache-Control: no-store`。
+`revision` 是非负安全整数；商品 ID 是正安全整数。还可传 `memoryQuantity`（1～4，默认 1；大于 1 时须选内存），C02 按实装总根数核验插槽。响应中的 `memorySlots` 是所选主板已核验的内存插槽数，无法核验时为 `null`。重复键、错误类别、类别与实际商品不符、客户端参数/金额/通过标识/规则开关或规则版本覆盖均拒绝 400/`INVALID_CONFIGURATION`。后台没有停用或绕过核心规则的入口。接口不改变库存或保存工作区，响应带 `Cache-Control: no-store`。
 
 正常完成返回 HTTP 200 的 `data`：
 

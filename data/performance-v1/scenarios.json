@@ -4,13 +4,13 @@
     "skus": [
       "INTEL-I5-14600K",
       "ASUS-TUF-B760M-PLUS-WIFI",
-      "KINGSTON-KF560C36BBEK2-32",
+      "KINGSTON-KF560C36BBE2-16",
       "SAMSUNG-MZ-V9P1T0BW",
       "CORSAIR-CP-9020295",
       "DEEPCOOL-CC560",
       "DEEPCOOL-AK400"
     ],
-    "demoTotalCny": "5653.00",
+    "demoTotalCny": "5203.50",
     "graphics": "UHD 770 + 主板HDMI/DisplayPort"
   },
   "gaming": {
@@ -18,13 +18,13 @@
       "INTEL-I5-14600KF",
       "NVIDIA-RTX4070SUPER-FE",
       "ASUS-TUF-B760M-PLUS-WIFI",
-      "KINGSTON-KF560C36BBEK2-32",
+      "KINGSTON-KF560C36BBE2-16",
       "SAMSUNG-MZ-V9P1T0BW",
       "CORSAIR-CP-9020295",
       "DEEPCOOL-CC560",
       "DEEPCOOL-AK400"
     ],
-    "demoTotalCny": "10552.00",
+    "demoTotalCny": "10102.50",
     "graphics": "RTX 4070 SUPER FE"
   },
   "creation": {
@@ -32,13 +32,13 @@
       "INTEL-I5-14600K",
       "NVIDIA-RTX4070SUPER-FE",
       "ASUS-TUF-B760M-PLUS-WIFI",
-      "KINGSTON-KF560C36BBEK2-32",
+      "KINGSTON-KF560C36BBE2-16",
       "SAMSUNG-MZ-V9P1T0BW",
       "CORSAIR-CP-9020295",
       "DEEPCOOL-CC560",
       "DEEPCOOL-AK400"
     ],
-    "demoTotalCny": "10652.00",
+    "demoTotalCny": "10202.50",
     "graphics": "RTX 4070 SUPER FE"
   }
 }

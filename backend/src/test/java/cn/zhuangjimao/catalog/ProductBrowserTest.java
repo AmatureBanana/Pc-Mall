@@ -11,11 +11,17 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.SpringApplication;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** SYS-T01 subset: real HTTP, real isolated MySQL, no persistence mocks. */
 class ProductBrowserTest {
+    static long memoryModuleId(ConfigurableApplicationContext app) {
+        return app.getBean(JdbcTemplate.class).queryForObject(
+                "SELECT id FROM products WHERE sku='KINGSTON-KF560C36BBE2-16'", Long.class);
+    }
+
     @Test
     void guestSeesMigratedProductsAndRestartDoesNotDuplicateThem() throws Exception {
         String url = required("TEST_DB_URL");

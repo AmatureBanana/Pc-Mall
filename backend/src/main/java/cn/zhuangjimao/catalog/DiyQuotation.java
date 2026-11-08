@@ -18,22 +18,24 @@ class DiyQuotation {
     DiyQuotation(ProductMapper products) { this.products = products; }
 
     @Transactional(readOnly = true)
-    public Quote quote(long revision, Map<HardwareCategory, Long> selections) {
+    public Quote quote(long revision, Map<HardwareCategory, Long> selections, int memoryQuantity) {
         var items = new ArrayList<Item>();
         BigDecimal subtotal = new BigDecimal("0.00");
         for (var category : HardwareCategory.values()) {
             Long id = selections.get(category);
             if (id == null) continue;
+            int quantity = category == HardwareCategory.MEMORY ? memoryQuantity : 1;
             Product product = products.findById(id);
             String state = "VALID";
-            String message = "一个销售单位";
+            String message = category == HardwareCategory.MEMORY ? quantity + " 根内存" : "一个销售单位";
             if (product == null) { state = "NOT_FOUND"; message = "商品不存在，请移除或替换。"; }
             else if (!category.name().equals(product.category())) { state = "CATEGORY_MISMATCH"; message = "商品类别不匹配，请替换。"; }
             else if (!"ON_SALE".equals(product.status())) { state = "OFF_SALE"; message = "商品已下架，请替换。"; }
             else if (product.stock() < 1) { state = "OUT_OF_STOCK"; message = "商品暂时缺货，请替换。"; }
-            BigDecimal amount = state.equals("VALID") ? product.price() : null;
+            else if (product.stock() < quantity) { state = "OUT_OF_STOCK"; message = "内存库存不足，当前仅可选 " + product.stock() + " 根。"; }
+            BigDecimal amount = state.equals("VALID") ? product.price().multiply(BigDecimal.valueOf(quantity)) : null;
             if (amount != null) subtotal = subtotal.add(amount);
-            items.add(new Item(category, id, 1, state, message, product, amount));
+            items.add(new Item(category, id, quantity, state, message, product, amount));
         }
         boolean valid = items.stream().allMatch(item -> item.state().equals("VALID"));
         return new Quote(revision, List.copyOf(items), valid ? subtotal : null, subtotal, "NOT_CHECKED");

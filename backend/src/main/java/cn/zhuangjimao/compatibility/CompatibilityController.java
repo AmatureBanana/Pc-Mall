@@ -1,5 +1,6 @@
 package cn.zhuangjimao.compatibility;
 
+import cn.zhuangjimao.catalog.DiyMemory;
 import cn.zhuangjimao.catalog.HardwareCategory;
 import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,6 +29,7 @@ class CompatibilityController {
         if (input == null || !input.isObject()) throw invalid();
         var selections = new EnumMap<HardwareCategory, Long>(HardwareCategory.class);
         long revision = -1;
+        long memoryQuantity = 1;
         Long integratedGraphicsCpuId = null;
         var fields = input.fields();
         while (fields.hasNext()) {
@@ -42,16 +44,21 @@ class CompatibilityController {
                 integratedGraphicsCpuId = field.getValue().asLong();
                 continue;
             }
+            if (field.getKey().equals("memoryQuantity")) {
+                if (!safe(field.getValue())) throw invalid();
+                memoryQuantity = field.getValue().asLong();
+                continue;
+            }
             HardwareCategory category;
             try { category = HardwareCategory.valueOf(field.getKey()); }
             catch (IllegalArgumentException exception) { throw invalid(); }
             if (!safe(field.getValue()) || field.getValue().asLong() < 1) throw invalid();
             selections.put(category, field.getValue().asLong());
         }
-        if (revision < 0) throw invalid();
+        if (revision < 0 || !DiyMemory.validQuantity(memoryQuantity, selections.containsKey(HardwareCategory.MEMORY))) throw invalid();
         try {
             return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                    .body(new CheckResponse(compatibility.check(revision, selections, integratedGraphicsCpuId)));
+                    .body(new CheckResponse(compatibility.check(revision, selections, integratedGraphicsCpuId, (int) memoryQuantity)));
         } catch (InvalidConfiguration exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -82,7 +89,7 @@ class CompatibilityController {
             .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build();
 
     private static InvalidConfiguration invalid() {
-        return new InvalidConfiguration("配置须含有效修订号，每类最多一个商品引用，不接受参数、价格或通过标识。");
+        return new InvalidConfiguration("配置须含有效修订号，每类最多一个商品引用，所选内存数量须为 1～4 根。");
     }
 
     record CheckResponse(CompatibilityResult data) {}

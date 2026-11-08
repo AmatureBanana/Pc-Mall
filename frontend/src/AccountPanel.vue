@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElButton, ElDialog } from 'element-plus'
-import { adminModules, AuthError, currentAccount, loginAccount, writeAuth, type Account, type AdminModule } from './auth'
+import { adminModules, AuthError, currentAccount, loginAccount, signedIn, writeAuth, type Account, type AdminModule } from './auth'
 import ProfilePanel from './ProfilePanel.vue'
 import CatalogAdministration from './CatalogAdministration.vue'
 import UserAdministration from './UserAdministration.vue'
+import { useCart } from './cart'
 import { beginWorkspaceSignIn, endWorkspaceSignIn, signInOrigin, seenBaseline, restorationPending, workspaceActive } from './workspaceSession'
 
 const user = ref<Account | null>(null)
@@ -20,6 +21,7 @@ const sessionError = ref('')
 const modules = ref<AdminModule[]>([])
 const adminLoading = ref(false)
 const profileBusy = ref(false)
+const { clear: clearCart, refresh: refreshCart } = useCart()
 const selectedModule = computed(() => modules.value.find(item => item.code === route.value.split('/')[1]))
 const authOpen = computed(() => route.value === 'login' || route.value === 'register')
 const adminOpen = computed(() => route.value === 'admin' || route.value.startsWith('admin/'))
@@ -53,7 +55,7 @@ function syncRoute() {
 function clearSecrets() { password.value = confirmPassword.value = '' }
 function feedback(cause: unknown) {
   error.value = cause instanceof Error ? cause.message : '操作未完成，请稍后重试。'
-  if (cause instanceof AuthError && cause.status === 401) { identityRevision++; user.value = null }
+  if (cause instanceof AuthError && cause.status === 401) { identityRevision++; user.value = null; signedIn.value = false; clearCart() }
 }
 async function checkSession() {
   if (busy.value || profileBusy.value) return
@@ -61,14 +63,19 @@ async function checkSession() {
   try {
     const account = await currentAccount()
     if (revision !== identityRevision) return
+    if (user.value?.id !== account.id) clearCart()
     user.value = account
+    signedIn.value = true
     sessionError.value = ''
+    void refreshCart()
   }
   catch (cause) {
     if (revision !== identityRevision) return
     if (cause instanceof AuthError && cause.status === 401) {
       if (user.value) sessionError.value = '登录已过期，请重新登录。'
       user.value = null
+      signedIn.value = false
+      clearCart()
     } else sessionError.value = '账户状态暂时无法获取，请重试。'
   }
 }
@@ -102,9 +109,13 @@ async function submit() {
       notice.value = '注册成功，请登录。'
       navigate('login')
     } else {
-      user.value = await loginAccount(username.value, password.value)
+      const account = await loginAccount(username.value, password.value)
+      if (user.value?.id !== account.id) clearCart()
+      user.value = account
+      signedIn.value = true
       clearSecrets()
       sessionError.value = ''
+      void refreshCart()
       // Closing or navigating away cannot cancel a session already created by the server. Accept
       // that identity, but a stale response must not navigate over the user's current destination.
       if (flow !== authFlowRevision || !authOpen.value) {
@@ -137,7 +148,7 @@ async function logout() {
   identityRevision++
   busy.value = true
   sessionError.value = ''
-  try { await writeAuth('logout', {}); user.value = null; navigate(); notice.value = '已退出登录。' }
+  try { await writeAuth('logout', {}); user.value = null; signedIn.value = false; clearCart(); navigate(); notice.value = '已退出登录。' }
   catch (cause) { sessionError.value = cause instanceof Error ? cause.message : '退出失败，请重试。' }
   finally { busy.value = false }
 }
@@ -146,7 +157,7 @@ function profileUpdated(account: Account) {
   user.value = account
   sessionError.value = ''
 }
-function profileExpired() { identityRevision++; user.value = null }
+function profileExpired() { identityRevision++; user.value = null; signedIn.value = false; clearCart() }
 function passwordChanged() {
   profileExpired()
   clearSecrets()
@@ -192,6 +203,7 @@ onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.
   </ElDialog>
 
   <ProfilePanel v-if="route === 'profile'" @updated="profileUpdated" @expired="profileExpired" @password-changed="passwordChanged" @busy="profileBusy = $event"/>
+
 
   <ElDialog :model-value="adminOpen" title="管理后台" :width="selectedModule?.code === 'products' || selectedModule?.code === 'users' ? '1260px' : '900px'" class="admin-dialog" @close="adminOpen && navigate()">
     <p v-if="adminLoading" role="status">正在验证后台权限…</p>

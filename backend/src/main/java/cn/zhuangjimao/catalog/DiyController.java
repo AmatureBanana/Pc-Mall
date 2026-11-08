@@ -21,23 +21,27 @@ class DiyController {
     ResponseEntity<QuoteResponse> quote(@RequestParam MultiValueMap<String, String> query) {
         var selections = new EnumMap<HardwareCategory, Long>(HardwareCategory.class);
         long revision = -1;
+        long memoryQuantity = 1;
         try {
             for (var entry : query.entrySet()) {
                 if (entry.getValue().size() != 1 || !entry.getValue().get(0).matches("0|[1-9][0-9]{0,15}")) throw new IllegalArgumentException();
                 long value = Long.parseLong(entry.getValue().get(0));
                 if (value > MAX_SAFE_INTEGER) throw new IllegalArgumentException();
                 if (entry.getKey().equals("revision")) revision = value;
+                else if (entry.getKey().equals("memoryQuantity")) memoryQuantity = value;
                 else {
                     if (value < 1) throw new IllegalArgumentException();
                     selections.put(HardwareCategory.valueOf(entry.getKey()), value);
                 }
             }
-            if (revision < 0) throw new IllegalArgumentException();
+            if (revision < 0 || !DiyMemory.validQuantity(memoryQuantity, selections.containsKey(HardwareCategory.MEMORY))) {
+                throw new IllegalArgumentException();
+            }
         } catch (IllegalArgumentException exception) {
-            throw new CatalogException(HttpStatus.BAD_REQUEST, "INVALID_CONFIGURATION", "配置须含有效修订号，每类最多一个商品引用，不接受价格或数量。");
+            throw new CatalogException(HttpStatus.BAD_REQUEST, "INVALID_CONFIGURATION", "配置须含有效修订号，每类最多一个商品引用。所选内存数量须为 1～4 根。");
         }
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(new QuoteResponse(quotation.quote(revision, selections)));
+                .body(new QuoteResponse(quotation.quote(revision, selections, (int) memoryQuantity)));
     }
 
     record QuoteResponse(DiyQuotation.Quote data) {}

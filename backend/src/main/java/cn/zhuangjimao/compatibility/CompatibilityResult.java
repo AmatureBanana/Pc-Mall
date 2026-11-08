@@ -9,7 +9,7 @@ import java.util.List;
 public record CompatibilityResult(long revision, String ruleVersion, String checkedAt, String catalogVersion,
                            CompatibilityStatus status, boolean complete, boolean corePassed,
                            List<RuleResult> checks, List<Missing> missing, List<Unexecuted> unexecutedRules,
-                           List<Unexecuted> unexecutedExtensions) {
+                           List<Unexecuted> unexecutedExtensions, Integer memorySlots) {
     /** A required category with no usable selection, kept separate from a rule's own state. */
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Missing(String category, String label, String state, String message) {}

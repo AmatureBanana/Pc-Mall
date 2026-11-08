@@ -1,16 +1,26 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { ref, watch } from 'vue'
 import { ElButton, ElDialog, ElSkeleton } from 'element-plus'
 import { formatParameter, formatPrice, imageFallback, loadProduct } from './catalog'
 import { formatPerformanceScore } from './performance'
 import { useCatalogRequest } from './useCatalogRequest'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
+import { useCart } from './cart'
 
-const props = defineProps<{ id: string }>()
-const emit = defineEmits<{ close: [] }>()
+const props = defineProps<{ id: string; signedIn?: boolean }>()
+const emit = defineEmits<{ close: []; signIn: [] }>()
 const { data: detail, status, error, retryable, refresh } = useCatalogRequest(
   signal => loadProduct(props.id, signal), '商品详情')
+const { add, error: cartError, notice: cartNotice } = useCart()
+const adding = ref(false)
 watch(() => props.id, refresh, { immediate: true })
+
+async function addToCart() {
+  if (!detail.value || adding.value) return
+  adding.value = true
+  await add(detail.value.product.id, 1)
+  adding.value = false
+}
 </script>
 
 <template>
@@ -23,6 +33,15 @@ watch(() => props.id, refresh, { immediate: true })
         <div><p class="detail-category">{{ detail.product.categoryLabel }} · {{ detail.product.brand }}</p><h2>{{ detail.product.name }}</h2><p class="detail-description">{{ detail.description }}</p>
           <div class="detail-price"><span class="product-price">¥ {{ formatPrice(detail.product.price) }}</span><span class="stock" :class="{ unavailable: detail.product.stock === 0 }">{{ detail.product.stock === 0 ? '暂时缺货' : `库存 ${detail.product.stock} 件` }}</span></div>
           <p class="detail-demo-note">{{ detail.product.priceNote }}</p>
+          <div class="detail-cart">
+            <ElButton v-if="!signedIn" type="primary" @click="emit('signIn')">登录后加入购物车</ElButton>
+            <ElButton v-else type="primary" :loading="adding" :disabled="adding || detail.product.stock === 0" @click="addToCart">
+              {{ detail.product.stock === 0 ? '暂时缺货，无法加入购物车' : '加入购物车' }}
+            </ElButton>
+            <p v-if="cartError" role="alert" class="auth-error">{{ cartError }}</p>
+            <p v-else-if="cartNotice" role="status" class="auth-success">{{ cartNotice }}<a href="#cart">查看购物车</a></p>
+            <p v-else class="detail-demo-note">每次加入 1 件；同一商品会在购物车合并，可再调整 1～99 的数量。</p>
+          </div>
         </div>
       </div>
       <dl class="detail-identity">

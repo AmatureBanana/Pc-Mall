@@ -62,7 +62,7 @@ final class CapacityPerformance {
         var result = PerformanceScores.memory(capacity.path("value").decimalValue(),generation.path("value").asText(),
                 rate.path("value").decimalValue(),cl.path("value").intValue(),trcd.path("value").intValue(),trp.path("value").intValue());
         if (result == null) return unavailable("INVALID","当前评分版本不支持此内存容量或DDR代际。");
-        return valid(result, "按套装容量优先，同容量比较标称速率和时序。标称档位的评分不代表整机实测速率。",
+        return valid(result, "按商品标称内存容量优先，同容量比较标称速率和时序。标称档位的评分不代表整机实测速率。",
                 rate,capacity,generation,timingRate,cl,trcd,trp);
     }
 
