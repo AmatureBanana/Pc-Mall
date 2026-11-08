@@ -15,6 +15,9 @@ defineProps<{ name: string }>()
     <g v-else-if="name === 'replace'"><path d="M4 8h15m-4-4 4 4-4 4M20 16H5m4-4-4 4 4 4"/></g>
     <g v-else-if="name === 'tools'"><path d="m5 3 4 4-2 2-4-4c-2 5 2 8 6 6l9 10 3-3-10-9c2-4-1-8-6-6ZM4 20l5-5m6-9 5-4 2 2-4 5"/></g>
     <g v-else-if="name === 'search'"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></g>
+    <g v-else-if="name === 'shield'"><path d="m12 2 8 3v6c0 5-8 11-8 11S4 16 4 11V5z"/><path d="m8 11 3 3 5-6"/></g>
+    <g v-else-if="name === 'bulb'"><path d="M8 17c0-3-4-4-4-8a8 8 0 0 1 16 0c0 4-4 5-4 8M9 20h6m-5 3h4M8 17h8M1 9H0m24 0h-1M4 2 2 0m18 2 2-2"/></g>
+    <g v-else-if="name === 'reset'"><path d="M3 10a9 9 0 1 1 1 7M3 4v6h6"/></g>
     <g v-else-if="name === 'check'"><path d="m5 12 4 4L19 6"/></g>
     <g v-else><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></g>
   </svg>
