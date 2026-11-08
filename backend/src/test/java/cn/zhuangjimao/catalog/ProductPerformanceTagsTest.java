@@ -60,7 +60,7 @@ class ProductPerformanceTagsTest {
             if (category.equals("PSU")) assertThat(tags.toString()).contains("额定750W","ATX 3.1");
             if (category.equals("CASE")) assertThat(tags.toString()).contains("显卡限长370mm","散热限高163mm");
             if (category.equals("COOLER")) assertThat(tags.toString()).contains("高度155mm");
-            if (category.equals("MEMORY")) assertThat(tags.toString()).contains("综合评分 47.3分","32GB");
+            if (category.equals("MEMORY")) assertThat(tags.toString()).contains("综合评分 21.4分","16GB");
             if (category.equals("SSD")) assertThat(tags.toString()).contains("综合评分 59.7分","1000GB");
         }
     }
@@ -101,7 +101,7 @@ class ProductPerformanceTagsTest {
         String path="/api/admin/products/"+id;
         try {
             assertThat(post(path+"/status",Map.of("revision",0,"status","ON_SALE")).statusCode()).isEqualTo(200);
-            assertThat(get("/api/products/"+id).path("performance").path("score").asText()).isEqualTo("47.252110");
+            assertThat(get("/api/products/"+id).path("performance").path("score").asText()).isEqualTo("21.429325");
             input.remove("sku"); input.remove("category"); input.remove("price"); input.put("revision",1);
             var rate=parameter(parameters,"dataRate"); rate.put("value",6200);
             var edited=post(path,input);

@@ -41,9 +41,9 @@ class GuestRestorationTest {
         long product = cloneProduct(db);
         try {
             // A guest holds only product references; restoration must read the current server values.
-            String quoteQuery = "/api/diy/quote?revision=7&CPU=%d&MEMORY=7".formatted(product);
+            String quoteQuery = "/api/diy/quote?revision=7&CPU=%d&MEMORY=%d".formatted(product, ProductBrowserTest.memoryModuleId(app));
             JsonNode before = read(ProductBrowserTest.get(app, quoteQuery));
-            assertThat(before.path("total").asText()).isEqualTo("2398.00");
+            assertThat(before.path("total").asText()).isEqualTo("1948.50");
             assertThat(before.path("compatibility").asText()).isEqualTo("NOT_CHECKED");
 
             List<String> tablesBefore = tables(db);
@@ -59,7 +59,7 @@ class GuestRestorationTest {
             db.update("UPDATE products SET price=1199.00,revision=revision+1 WHERE id=?", product);
             setParameter(db, product, "socket", json.getNodeFactory().textNode("AM5"));
             JsonNode after = read(ProductBrowserTest.get(app, quoteQuery));
-            assertThat(after.path("total").asText()).isEqualTo("2098.00");
+            assertThat(after.path("total").asText()).isEqualTo("1648.50");
             JsonNode changed = json.readTree(check("""
                     {"revision":7,"CPU":%d,"MOTHERBOARD":3}""".formatted(product))).path("data");
             assertThat(rule(changed, "C01").path("state").asText()).isEqualTo("FAIL");
@@ -82,8 +82,9 @@ class GuestRestorationTest {
         List<String> tablesBefore = tables(db);
         Map<Long, Integer> reservationsBefore = reservations(db);
 
-        String first = read(ProductBrowserTest.get(app, "/api/diy/quote?revision=9&CPU=1&MEMORY=7")).toString();
-        String repeated = read(ProductBrowserTest.get(app, "/api/diy/quote?revision=9&CPU=1&MEMORY=7")).toString();
+        String query = "/api/diy/quote?revision=9&CPU=1&MEMORY=" + ProductBrowserTest.memoryModuleId(app);
+        String first = read(ProductBrowserTest.get(app, query)).toString();
+        String repeated = read(ProductBrowserTest.get(app, query)).toString();
 
         assertThat(repeated).as("no saved multi-plan or guest workspace changes the answer").isEqualTo(first);
         assertThat(db.queryForObject("SELECT COUNT(*) FROM account", Long.class)).isEqualTo(accountsBefore);

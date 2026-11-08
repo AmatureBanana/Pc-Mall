@@ -7,9 +7,10 @@ export const hardwareLabels: Record<HardwareCategory, string> = {
   SSD: 'SSD 固态硬盘', PSU: '电源', CASE: '机箱', COOLER: 'CPU 散热器',
 }
 export interface Selection { category: HardwareCategory; productId: number; source: 'DIY' }
-export interface Workspace { version: 1; revision: number; selections: Selection[]; integratedGraphicsCpuId?: number }
+export interface Workspace { version: 1; revision: number; selections: Selection[]; integratedGraphicsCpuId?: number; memoryQuantity?: number }
+export const maxDiyMemoryQuantity = 4
 export interface QuoteItem {
-  category: HardwareCategory; productId: number; quantity: 1
+  category: HardwareCategory; productId: number; quantity: number
   state: 'VALID' | 'NOT_FOUND' | 'CATEGORY_MISMATCH' | 'OFF_SALE' | 'OUT_OF_STOCK'
   message: string; product: ProductIdentity | null; amount: string | null
 }
@@ -27,6 +28,7 @@ export interface Compatibility {
   revision: number; ruleVersion: string; checkedAt: string; catalogVersion: string
   status: 'CORE_PASSED' | 'INCOMPATIBLE' | 'INCOMPLETE' | 'UNVERIFIED' | 'ERROR'
   complete: boolean; corePassed: boolean
+  memorySlots: number | null
   checks: RuleCheck[]; missing: MissingPart[]; unexecutedRules: { rule: string; reason: string }[]
   unexecutedExtensions: { rule: string; reason: string }[]
 }
@@ -58,6 +60,9 @@ export function restoreWorkspace(): { workspace: Workspace; warning: string } {
       || item.revision >= Number.MAX_SAFE_INTEGER || !Array.isArray(item.selections) || item.selections.length > 8
       || !item.selections.every((selection: Selection) => selection && isCategory(selection.category)
         && Number.isSafeInteger(selection.productId) && selection.productId > 0 && selection.source === 'DIY')
+      || item.memoryQuantity !== undefined && (!Number.isInteger(item.memoryQuantity) || item.memoryQuantity < 1
+        || item.memoryQuantity > maxDiyMemoryQuantity
+        || !item.selections.some((selection: Selection) => selection.category === 'MEMORY'))
       || item.integratedGraphicsCpuId !== undefined && (!Number.isSafeInteger(item.integratedGraphicsCpuId)
         || !item.selections.some((selection: Selection) => selection.category === 'CPU' && selection.productId === item.integratedGraphicsCpuId)
         || item.selections.some((selection: Selection) => selection.category === 'GPU'))
@@ -67,6 +72,7 @@ export function restoreWorkspace(): { workspace: Workspace; warning: string } {
     // Restore references only. Client-saved prices, inventory or quote results are never trusted.
     return { workspace: { version: 1, revision: item.revision, selections: item.selections.map((selection: Selection) =>
       ({ category: selection.category, productId: selection.productId, source: selection.source })),
+      ...(item.memoryQuantity > 1 ? { memoryQuantity: item.memoryQuantity } : {}),
       ...(item.integratedGraphicsCpuId === undefined ? {} : { integratedGraphicsCpuId: item.integratedGraphicsCpuId }) }, warning: '' }
   } catch {
     return { workspace: emptyWorkspace(), warning: '本标签页的临时配置无法恢复，原存储未删除；重新选择后将保存新的配置。' }
@@ -173,6 +179,7 @@ export function describeRestoration(seen: SeenSnapshot | null, quote: Quote, che
 
 export async function loadQuote(workspace: Workspace, signal: AbortSignal): Promise<Quote> {
   const query = new URLSearchParams({ revision: String(workspace.revision) })
+  if (workspace.memoryQuantity !== undefined) query.set('memoryQuantity', String(workspace.memoryQuantity))
   workspace.selections.forEach(selection => query.set(selection.category, String(selection.productId)))
   const response = await fetch(`/api/diy/quote?${query}`, { signal, cache: 'no-store', headers: { Accept: 'application/json' } })
   if (!response.ok) throw new Error('参考报价暂时不可用，已保留当前选择，请重试。')
@@ -184,7 +191,8 @@ export async function loadQuote(workspace: Workspace, signal: AbortSignal): Prom
     || new Set(quote.items.map((item: QuoteItem) => item?.category)).size !== quote.items.length
     || !quote.items.every((item: QuoteItem) => item && workspace.selections.some(selection =>
       selection.category === item.category && selection.productId === item.productId)
-      && item.quantity === 1 && typeof item.message === 'string'
+      && item.quantity === (item.category === 'MEMORY' ? workspace.memoryQuantity ?? 1 : 1)
+      && typeof item.message === 'string'
       && ['VALID', 'NOT_FOUND', 'CATEGORY_MISMATCH', 'OFF_SALE', 'OUT_OF_STOCK'].includes(item.state)
       && (item.state === 'NOT_FOUND' ? item.product === null : isProductIdentity(item.product) && item.product.id === item.productId)
       && (item.state === 'VALID' ? isMoney(item.amount) && item.product?.category === item.category : item.amount === null))
@@ -195,11 +203,12 @@ export async function loadQuote(workspace: Workspace, signal: AbortSignal): Prom
 }
 
 /**
- * Sends only product references and the configuration revision. The server re-reads every
+ * Sends product references, the memory quantity and the configuration revision. The server re-reads every
  * parameter itself, so nothing here can turn into a client-claimed pass.
  */
 export async function loadCompatibility(workspace: Workspace, signal: AbortSignal): Promise<Compatibility> {
   const body: Record<string, number> = { revision: workspace.revision }
+  if (workspace.memoryQuantity !== undefined) body.memoryQuantity = workspace.memoryQuantity
   if (workspace.integratedGraphicsCpuId) body.integratedGraphicsCpuId = workspace.integratedGraphicsCpuId
   workspace.selections.forEach(selection => { body[selection.category] = selection.productId })
   const csrf = await fetch('/api/auth/csrf', { signal, cache: 'no-store', headers: { Accept: 'application/json' } })
@@ -214,6 +223,7 @@ export async function loadCompatibility(workspace: Workspace, signal: AbortSigna
   if (!response.ok) throw new Error('兼容检测暂时不可用，已保留当前选择，请重试。')
   const check = (await response.json())?.data
   if (!check || check.revision !== workspace.revision || typeof check.corePassed !== 'boolean'
+      || !(check.memorySlots === null || Number.isSafeInteger(check.memorySlots) && check.memorySlots > 0)
       || check.ruleVersion !== 'f03-core-graphics-choice-v3'
       || typeof check.catalogVersion !== 'string' || !/^[a-f0-9]{64}$/.test(check.catalogVersion)
       || typeof check.checkedAt !== 'string' || !Number.isFinite(Date.parse(check.checkedAt))

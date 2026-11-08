@@ -53,6 +53,11 @@ public class CompatibilityService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public CompatibilityResult check(long revision, Map<HardwareCategory, Long> selections, Long integratedGraphicsCpuId) {
+        return check(revision, selections, integratedGraphicsCpuId, 1);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public CompatibilityResult check(long revision, Map<HardwareCategory, Long> selections, Long integratedGraphicsCpuId, int memoryQuantity) {
         if (integratedGraphicsCpuId != null && (!integratedGraphicsCpuId.equals(selections.get(HardwareCategory.CPU))
                 || selections.containsKey(HardwareCategory.GPU))) {
             throw new InvalidConfiguration("核显选择须绑定当前 CPU，且不能与独立显卡同时选择。");
@@ -60,6 +65,7 @@ public class CompatibilityService {
         var parts = new EnumMap<HardwareCategory, Part>(HardwareCategory.class);
         var missing = new ArrayList<CompatibilityResult.Missing>();
         var snapshot = new StringBuilder(RULE_VERSION).append(":integratedGraphicsCpuId=").append(integratedGraphicsCpuId);
+        if (memoryQuantity > 1) snapshot.append(":memoryQuantity=").append(memoryQuantity);
         for (var category : HardwareCategory.values()) {
             Long id = selections.get(category);
             snapshot.append('\n').append(category).append(':').append(id);
@@ -79,7 +85,7 @@ public class CompatibilityService {
             }
             // Off-sale and out-of-stock products still have technical parameters. The quote and
             // transaction services enforce availability independently of this core diagnosis.
-            parts.put(category, new Part(category, parameters(record)));
+            parts.put(category, new Part(category, parameters(record), category == HardwareCategory.MEMORY ? memoryQuantity : 1));
         }
         var checks = CompatibilityRules.check(parts, selections.containsKey(HardwareCategory.GPU));
         // Graphics is a required choice, not an output-path compatibility rule.
@@ -96,15 +102,19 @@ public class CompatibilityService {
                 ? CompatibilityStatus.INCOMPATIBLE : !complete ? CompatibilityStatus.INCOMPLETE
                 : checks.size() == 9 && checks.stream().allMatch(check -> check.state() == RuleState.PASS || check.state() == RuleState.NOT_APPLICABLE)
                 ? CompatibilityStatus.CORE_PASSED : CompatibilityStatus.UNVERIFIED;
+        var board = new CompatibilityRules.Read(parts,
+                CompatibilityRules.Field.of(HardwareCategory.MOTHERBOARD, "memorySlots"));
+        Integer memorySlots = board.usable(HardwareCategory.MOTHERBOARD, "memorySlots")
+                ? (int) board.integer(HardwareCategory.MOTHERBOARD, "memorySlots") : null;
         return new CompatibilityResult(revision, RULE_VERSION, now(), fingerprint(snapshot.toString()), status,
-                complete, status == CompatibilityStatus.CORE_PASSED, checks, List.copyOf(missing), List.of(), EXTENSIONS);
+                complete, status == CompatibilityStatus.CORE_PASSED, checks, List.copyOf(missing), List.of(), EXTENSIONS, memorySlots);
     }
 
     CompatibilityResult failure(long revision) {
         return new CompatibilityResult(revision, RULE_VERSION, now(), null, CompatibilityStatus.ERROR,
                 false, false, List.of(), List.of(), java.util.stream.IntStream.of(1, 2, 3, 4, 5, 6, 8, 9, 10)
                 .mapToObj(number -> new CompatibilityResult.Unexecuted("C%02d".formatted(number), "检测异常，未获得可靠结果。"))
-                .toList(), EXTENSIONS);
+                .toList(), EXTENSIONS, null);
     }
 
     private String now() { return OffsetDateTime.now(clock).truncatedTo(ChronoUnit.SECONDS).toString(); }

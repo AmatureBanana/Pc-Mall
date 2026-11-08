@@ -19,6 +19,10 @@ defineProps<{ name: string }>()
     <g v-else-if="name === 'bulb'"><path d="M8 17c0-3-4-4-4-8a8 8 0 0 1 16 0c0 4-4 5-4 8M9 20h6m-5 3h4M8 17h8M1 9H0m24 0h-1M4 2 2 0m18 2 2-2"/></g>
     <g v-else-if="name === 'reset'"><path d="M3 10a9 9 0 1 1 1 7M3 4v6h6"/></g>
     <g v-else-if="name === 'check'"><path d="m5 12 4 4L19 6"/></g>
+    <g v-else-if="name === 'layers'"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></g>
+    <g v-else-if="name === 'cart'"><path d="M2 3h3l3 13h11l3-10H6"/><circle cx="9" cy="20" r="1"/><circle cx="19" cy="20" r="1"/></g>
+    <g v-else-if="name === 'card'"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M2 9h20M6 15h4"/></g>
+    <g v-else-if="name === 'chevron-right'"><path d="m9 5 7 7-7 7"/></g>
     <g v-else><circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 4h.01"/></g>
   </svg>
 </template>

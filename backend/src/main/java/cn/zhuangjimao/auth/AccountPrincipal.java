@@ -5,8 +5,12 @@ import org.springframework.security.core.userdetails.User;
 
 import java.util.List;
 
-/** Retains the version actually used for authentication; User erases its password after login. */
-final class AccountPrincipal extends User {
+/**
+ * Retains the version actually used for authentication; User erases its password after login.
+ * Public so owner-scoped services can read the session identity without trusting a request field;
+ * everything else about it stays internal to this package.
+ */
+public final class AccountPrincipal extends User {
     private final long accountId;
     private final long credentialVersion;
 
@@ -17,6 +21,10 @@ final class AccountPrincipal extends User {
         credentialVersion = account.credentialVersion();
     }
 
+    /** The authenticated owner id, for services that must scope rows to the current session. */
+    public long ownerId() { return accountId; }
+
+    /** Same value, package-internal: existing account services keep reading it directly. */
     long accountId() { return accountId; }
 
     boolean matches(Account account) {

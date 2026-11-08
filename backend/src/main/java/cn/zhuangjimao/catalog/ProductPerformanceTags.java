@@ -55,7 +55,7 @@ class ProductPerformanceTags {
                 number(tags,fields,"boardPowerEstimate","板卡功耗","W","W","厂商总板卡功耗，不是整机功耗。");
             }
             case "MEMORY" -> {
-                number(tags,fields,"totalCapacity","","GB内存","GB","按完整销售套装的总标称容量计算。");
+                number(tags,fields,"totalCapacity","","GB内存","GB","按当前商品的标称内存容量计算。");
                 text(tags,fields,"generation","","代际规格不代表超频或整机运行速度已验证。");
             }
             case "SSD" -> {

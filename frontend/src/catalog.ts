@@ -4,7 +4,7 @@ export const categories = [
   { code: 'ALL', label: '全部商品', icon: 'grid' },
   { code: 'CPU', label: 'CPU', icon: 'cpu' },
   { code: 'MOTHERBOARD', label: '主板', icon: 'board' },
-  { code: 'GPU', label: '独显', icon: 'gpu' },
+  { code: 'GPU', label: '显卡', icon: 'gpu' },
   { code: 'MEMORY', label: '内存', icon: 'memory' },
   { code: 'SSD', label: 'SSD', icon: 'ssd' },
   { code: 'PSU', label: '电源', icon: 'psu' },

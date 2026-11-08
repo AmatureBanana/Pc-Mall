@@ -11,7 +11,7 @@ final class Labels {
     private static final Map<HardwareCategory, String> NAMES = Map.of(
             HardwareCategory.CPU, "CPU",
             HardwareCategory.MOTHERBOARD, "主板",
-            HardwareCategory.GPU, "独显",
+            HardwareCategory.GPU, "显卡",
             HardwareCategory.MEMORY, "内存",
             HardwareCategory.SSD, "SSD",
             HardwareCategory.PSU, "电源",

@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { ElButton, ElDialog, ElEmpty, ElSkeleton } from 'element-plus'
+import { ElButton, ElDialog, ElEmpty, ElMessage, ElSkeleton } from 'element-plus'
 import HardwareIcon from './HardwareIcon.vue'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
 import { formatPrice, formatParameter, imageFallback, loadProduct, loadProducts } from './catalog'
 import { hardwareCategories, hardwareLabels, type HardwareCategory } from './diy'
 import { useCatalogRequest } from './useCatalogRequest'
 import { useDiyWorkspace } from './useDiyWorkspace'
+import { signedIn } from './auth'
+import { useCart } from './cart'
+import { beginWorkspaceSignIn } from './workspaceSession'
 
 const activeCategory = ref<HardwareCategory>('CPU')
 const searchInput = ref('')
@@ -14,15 +17,18 @@ const keyword = ref('')
 const brand = ref('')
 const sort = ref('default')
 const clearOpen = ref(false)
-const saved = ref(false)
-const { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear, save,
+const transferOpen = ref(false)
+const transferring = ref(false)
+const { addConfiguration, error: cartError } = useCart()
+const { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear,
+  memoryQuantity, memorySlots, memoryLimit, setMemoryQuantity,
   quotation, compatibility, restoration, restore, dismissRestoration } = useDiyWorkspace()
 const { data: quote, status: quoteStatus, error: quoteError, refresh: refreshQuote } = quotation
 const { data: check, status: checkStatus, error: checkError, refresh: refreshCheck } = compatibility
 const { data: products, status, error, refresh } = useCatalogRequest(
   signal => loadProducts(signal, activeCategory.value, keyword.value), '候选商品')
 const order: HardwareCategory[] = ['CPU', 'COOLER', 'MOTHERBOARD', 'MEMORY', 'GPU', 'SSD', 'PSU', 'CASE']
-const displayCategories = order.map(code => { const category = hardwareCategories.find(item => item.code === code)!; return { ...category, label: code === 'GPU' ? '显卡' : category.label } })
+const displayCategories = order.map(code => hardwareCategories.find(item => item.code === code)!)
 const labels: Record<HardwareCategory, string> = hardwareLabels
 const activeLabel = computed(() => labels[activeCategory.value])
 const brands = computed(() => [...new Set((products.value ?? []).map(product => product.brand))])
@@ -34,6 +40,9 @@ const candidates = computed(() => {
 })
 const selectedId = (category: HardwareCategory) => workspace.value.selections.find(item => item.category === category)?.productId
 const quoteItem = (category: HardwareCategory) => quote.value?.items.find(item => item.category === category)
+const memoryLimitsLoading = computed(() => quoteStatus.value === 'loading' || checkStatus.value === 'loading')
+const memoryQuantityTooHigh = computed(() => memoryQuantity.value > memoryLimit.value && !memoryLimitsLoading.value)
+const totalUnits = computed(() => workspace.value.selections.length + memoryQuantity.value - 1)
 const cpuDetails = useCatalogRequest(async signal => {
   const cpuId = selectedId('CPU')
   return cpuId ? loadProduct(String(cpuId), signal) : null
@@ -67,7 +76,7 @@ const ruleLabels: Record<string, string> = {
 }
 const conflictSolutions: Record<string, string> = {
   C01: '更换为插槽一致的 CPU 或主板，替换后重新检测。',
-  C02: '选择主板支持的内存代际，并确保套装实际条数不超过主板插槽数量。',
+  C02: '选择主板支持的内存代际，并将根数调到插槽上限以内。',
   C03: '更换为明确支持当前 CPU 插槽的独立散热器，替换后重新检测。',
   C04: '更换为支持当前主板板型的机箱，或选择机箱支持板型内的主板。',
   C05: '选择规格、接口和协议同时匹配主板同一个有效安装组合的 SSD，或更换提供该组合的主板。',
@@ -114,7 +123,27 @@ function clearConfiguration() {
   sort.value = 'default'
   resetFilters()
 }
-function saveConfiguration() { saved.value = save() }
+function openTransfer() {
+  cartError.value = ''
+  transferOpen.value = true
+}
+async function confirmTransfer() {
+  if (transferring.value) return
+  if (!signedIn.value) {
+    transferOpen.value = false
+    beginWorkspaceSignIn(true)
+    window.location.hash = 'login'
+    return
+  }
+  if (memoryQuantity.value > memoryLimit.value) return
+  transferring.value = true
+  try {
+    if (await addConfiguration(workspace.value)) {
+      transferOpen.value = false
+      ElMessage.success('装机方案已加入购物车')
+    }
+  } finally { transferring.value = false }
+}
 const restoredSummary = computed(() => {
   if (restoration.value.phase !== 'ready') return null
   const detail = restoration.value.restoration
@@ -126,7 +155,6 @@ const restoredSummary = computed(() => {
     consistent: detail.comparable && detail.changes.length === 0 && !detail.catalogChanged,
   }
 })
-watch(() => workspace.value.revision, () => { saved.value = false })
 // The candidate list is a catalog read like the quote; a restoration must not leave it showing pre-login data.
 watch(() => restoration.value.phase, phase => { if (phase === 'ready') void refresh() })
 watch(activeCategory, () => { searchInput.value = keyword.value = brand.value = ''; sort.value = 'default'; void refresh() })
@@ -190,6 +218,15 @@ onMounted(() => { void refresh() })
                 <button :aria-label="'替换 ' + (category.code === 'GPU' ? '显卡' : category.label)" title="替换配件" @click="activeCategory = category.code"><HardwareIcon name="replace"/></button>
                 <button :aria-label="'移除 ' + (category.code === 'GPU' ? '显卡' : category.label)" title="移除配件" @click="remove(category.code)"><HardwareIcon name="trash"/></button>
               </div>
+              <div v-if="category.code === 'MEMORY' && slotSelected('MEMORY')" class="memory-quantity">
+                <span>已选 {{ memoryQuantity }} 根</span>
+                <small v-if="memoryLimitsLoading">正在核对插槽和库存…</small>
+                <small v-else-if="memorySlots === null">选定主板后可增加根数。</small>
+                <small v-else>主板 {{ memorySlots }} 槽 · 当前最多 {{ memoryLimit }} 根</small>
+              </div>
+              <small v-if="category.code === 'MEMORY' && memoryQuantityTooHigh" class="slot-problem">
+                当前选择 {{ memoryQuantity }} 根，请调低数量或更换主板。
+              </small>
               <small v-if="quoteItem(category.code) && quoteItem(category.code)!.state !== 'VALID'" class="slot-problem">{{ quoteItem(category.code)!.message }}</small>
             </div>
           </nav>
@@ -235,8 +272,8 @@ onMounted(() => { void refresh() })
               <details v-if="check" class="verification-note" aria-label="检测记录"><summary>检测记录</summary><p>修订 {{ check.revision }} · 规则 {{ check.ruleVersion }}<br/>参数版本 {{ check.catalogVersion.slice(0, 12) }} · {{ checkedTime }}（北京时间）</p></details>
             </section>
             <div class="diy-actions">
-              <p class="diy-save-note" role="status">{{ saved ? '已保存到当前标签页，刷新后可继续编辑。' : storageWarning ? '配置尚未保存，当前页面仍可继续编辑；请重试保存。' : '方案保存在当前标签页，刷新后可继续编辑。' }}</p>
-              <div><ElButton :disabled="!count" aria-label="清空配置" @click="clearOpen = true"><HardwareIcon name="reset"/>重置配置</ElButton><ElButton type="primary" :disabled="!count" @click="saveConfiguration"><HardwareIcon name="check"/>{{ saved ? '已保存方案' : '保存方案' }}</ElButton></div>
+              <p class="diy-save-note" role="status">{{ storageWarning ? '配置尚未保存，当前页面仍可继续编辑。' : '方案保存在当前标签页，刷新后可继续编辑。' }}</p>
+              <div><ElButton :disabled="!count" aria-label="清空配置" @click="clearOpen = true"><HardwareIcon name="reset"/>重置配置</ElButton><ElButton type="primary" :disabled="!count" @click="openTransfer"><HardwareIcon name="layers"/>转入购物车</ElButton></div>
             </div>
           </div>
         </section>
@@ -270,7 +307,15 @@ onMounted(() => { void refresh() })
             <a :href="'#diy/product/' + product.id" class="diy-product-image" tabindex="-1" aria-hidden="true"><img :src="product.imageUrl" :alt="product.categoryLabel + '品类示意图'" @error="imageFallback"/></a>
             <div class="diy-product-copy"><h3><a :href="'#diy/product/' + product.id">{{ product.name }}</a></h3><p>{{ product.summary }}</p><ProductPerformanceTags :tags="product.performanceTags" compact/><a :href="'#diy/product/' + product.id" class="diy-spec-link">型号与完整参数 ›</a></div>
             <div class="diy-product-price"><strong>¥{{ formatPrice(product.price) }}</strong><small :class="{ unavailable: !product.stock }">{{ product.stock ? '库存 ' + product.stock + ' 件' : '暂时缺货' }}</small></div>
-            <ElButton :type="selectedId(product.category) === product.id ? 'success' : 'primary'" :plain="selectedId(product.category) !== product.id"
+            <div v-if="product.category === 'MEMORY' && selectedId('MEMORY') === product.id"
+              class="memory-stepper" role="group" aria-label="内存数量">
+              <button type="button" aria-label="减少内存数量" :disabled="memoryQuantity <= 1"
+                @click="setMemoryQuantity(memoryQuantity - 1)">−</button>
+              <output aria-label="当前内存根数">{{ memoryQuantity }}</output>
+              <button type="button" aria-label="增加内存数量" :disabled="memoryQuantity >= memoryLimit"
+                @click="setMemoryQuantity(memoryQuantity + 1)">+</button>
+            </div>
+            <ElButton v-else :type="selectedId(product.category) === product.id ? 'success' : 'primary'" :plain="selectedId(product.category) !== product.id"
               :disabled="product.stock === 0 || selectedId(product.category) === product.id" :aria-label="(selectedId(product.category) === product.id ? '已选择' : '选择') + ' ' + product.name" @click="select(product)">
               {{ selectedId(product.category) === product.id ? '✓ 已选择' : '＋ 选择' }}
             </ElButton>
@@ -280,10 +325,33 @@ onMounted(() => { void refresh() })
       </section>
     </div>
     <ElDialog v-model="clearOpen" title="清空当前配置？" width="420px" align-center :close-on-click-modal="false"><p>将移除本标签页的全部已选硬件。取消可继续编辑。</p><template #footer><ElButton @click="clearOpen = false">取消</ElButton><ElButton type="danger" @click="clearConfiguration">确认清空</ElButton></template></ElDialog>
+    <ElDialog v-model="transferOpen" title="转入购物车" width="min(720px, calc(100vw - 32px))" align-center
+      :close-on-click-modal="false" :show-close="!transferring" :close-on-press-escape="!transferring">
+      <p class="transfer-intro">{{ signedIn ? '请核对配件。确认后将整套方案加入购物车。' : '请先登录。登录后会返回当前方案，你可以再确认加入购物车。' }}</p>
+      <section class="transfer-preview" aria-label="待加入的装机方案">
+        <strong>当前装机方案</strong><span> · {{ totalUnits }} 件配件</span>
+        <ul><li v-for="selection in workspace.selections" :key="selection.category">
+          {{ labels[selection.category] }} · {{ selectionName(selection.category) }}
+          <span v-if="selection.category === 'MEMORY'"> ×{{ memoryQuantity }} 根</span>
+        </li><li v-if="integratedSelected">显卡 · {{ selectionName('GPU') }}</li></ul>
+      </section>
+      <dl class="transfer-total"><div><dt>参考总价</dt><dd>{{ quote?.total != null && quote.revision === workspace.revision && quoteStatus === 'ready' ? '¥' + formatPrice(quote.total) : '待核价' }}</dd></div></dl>
+      <p class="transfer-intro">加入时会重新核验价格、库存和兼容性，参考价不锁定。</p>
+      <p v-if="memoryQuantityTooHigh" class="auth-error" role="alert">请调低内存数量或更换主板后再转入购物车。</p>
+      <p v-if="cartError" class="auth-error" role="alert">{{ cartError }}</p>
+      <template #footer><ElButton :disabled="transferring" @click="transferOpen = false">取消</ElButton><ElButton type="primary" :loading="transferring" :disabled="signedIn && memoryQuantity > memoryLimit" @click="confirmTransfer">{{ signedIn ? '确定' : '前往登录' }}</ElButton></template>
+    </ElDialog>
   </main>
 </template>
 
 <style scoped>
+.transfer-intro { margin: 0 0 14px; color: #657e9f; line-height: 1.6; }
+.transfer-preview, .transfer-total { padding: 15px 18px; background: #f1f5fb; border-radius: 10px; color: #234268; }
+.transfer-preview { border: 1px solid #dbe6f8; }
+.transfer-preview ul { margin: 10px 0 0; padding-left: 20px; color: #526077; line-height: 1.85; }
+.transfer-total { margin: 14px 0; }
+.transfer-total dt { color: #657e9f; }
+.transfer-total dd { margin: 5px 0 0; font-size: 20px; font-weight: 750; }
 .diy-workspace { color: #101a35; padding-bottom: 26px; }
 .diy-heading { display: flex; align-items: center; gap: 18px; min-height: 78px; }
 .diy-heading > svg { width: 38px; height: 38px; color: var(--blue); flex-shrink: 0; }
@@ -327,6 +395,7 @@ onMounted(() => { void refresh() })
 .category-controls button:last-child:hover { color: #d6364f; }
 .category-controls svg { width: 14px; height: 14px; }
 .slot-problem { display: block; padding: 0 12px 8px 56px; font-size: 11px; color: #995a17; line-height: 1.6; }
+.memory-quantity { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 10px 8px; color: #4b6a9b; font-size: 11px; }
 .diy-category-note { margin: auto 10px 0; padding: 18px 0 24px; font-size: 12px; color: #53658a; text-align: center; line-height: 1.8; }
 .diy-filters { padding: 17px 16px 14px; display: grid; gap: 15px; font-size: 13px; }
 .diy-brands { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
@@ -362,6 +431,12 @@ onMounted(() => { void refresh() })
 .diy-product-price small.unavailable { color: #ac7328; }
 .diy-product .el-button { width: 82px; height: 35px; margin: 0; font-weight: 600; }
 .diy-product.selected .el-button { background: #e9f7ed; border-color: #b2dfbe; color: #0b9131; opacity: 1; }
+.memory-stepper { display: grid; grid-template-columns: 28px 1fr 28px; align-items: stretch; width: 82px; min-height: 35px; border: 1px solid #b2dfbe; border-radius: 5px; background: #e9f7ed; color: #166b32; text-align: center; }
+.memory-stepper button { border: 0; background: transparent; color: inherit; font-size: 17px; cursor: pointer; }
+.memory-stepper button:hover:enabled { background: #d7efdf; }
+.memory-stepper button:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }
+.memory-stepper button:disabled { opacity: .45; cursor: default; }
+.memory-stepper output { display: grid; place-items: center; border-inline: 1px solid #b2dfbe; font-weight: 600; font-variant-numeric: tabular-nums; }
 .diy-empty { padding: 65px 18px; text-align: center; color: #637693; }
 .diy-empty > svg { width: 32px; height: 32px; }
 .diy-empty p { font-size: 13px; line-height: 1.7; }
@@ -421,6 +496,7 @@ onMounted(() => { void refresh() })
   .diy-category-button { padding-inline: 9px; gap: 9px; }.category-copy strong { font-size: 15px; }.category-copy small { font-size: 11px; }.selection-state { font-size: 10px; }
   .diy-product { grid-template-columns: 66px minmax(0,1fr) auto; }.diy-product-image img { width: 66px; }
   .diy-product > .el-button { grid-column: 3; grid-row: 2; justify-self: end; }.diy-product-image, .diy-product-copy { grid-row: span 2; }.diy-product-copy h3 { font-size: 15px; }
+  .memory-stepper { grid-column: 3; grid-row: 2; justify-self: end; }
   .diy-heading { gap: 12px; }.diy-heading > p { font-size: 12px; padding-left: 12px; }.workspace-badge { font-size: 10px; padding: 9px; }
   .diy-total { padding: 12px; }.diy-total b { font-size: 28px; }.diy-total p { font-size: 10px; }.diy-panel-heading h2 { font-size: 18px; }
 }

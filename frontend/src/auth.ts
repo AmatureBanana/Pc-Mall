@@ -1,6 +1,13 @@
+import { ref } from 'vue'
+
 export interface Account {
   id: number; username: string; nickname: string; role: 'USER' | 'ADMIN'
 }
+/**
+ * Whether the page currently holds an authenticated session. Published by the one surface that
+ * already polls the session (the account bar), so other surfaces never fetch /api/auth/me again.
+ */
+export const signedIn = ref(false)
 export interface AdminModule { code: string; title: string; description: string; availability: string }
 export class AuthError extends Error {
   constructor(message: string, readonly status: number) { super(message) }
@@ -31,12 +38,20 @@ function account(value: unknown): Account {
 export async function currentAccount() { return account(await request('/api/auth/me')) }
 export async function currentProfile() { return account(await request('/api/account/profile')) }
 
-export async function write(path: string, body: unknown) {
-  const value = await request('/api/auth/csrf')
+export async function write(path: string, body: unknown, method: 'POST' | 'DELETE' = 'POST', signal?: AbortSignal) {
+  const value = await request('/api/auth/csrf', { signal })
   if (!value || typeof value !== 'object' || !('token' in value) || typeof value.token !== 'string'
       || !('headerName' in value) || typeof value.headerName !== 'string') throw new Error('安全凭证获取失败，请重试。')
-  return request(path, { method: 'POST',
-    headers: { 'Content-Type': 'application/json', [value.headerName]: value.token }, body: JSON.stringify(body) })
+  // A body-less DELETE still carries the current session's CSRF token and never invents one.
+  // Cart identity changes abort both stages. In particular, an old action waiting for CSRF
+  // must never dispatch its POST with the next account's session cookie.
+  signal?.throwIfAborted()
+  const init: RequestInit = { method, headers: { [value.headerName]: value.token }, signal }
+  if (body !== undefined) {
+    (init.headers as Record<string, string>)['Content-Type'] = 'application/json'
+    init.body = JSON.stringify(body)
+  }
+  return request(path, init)
 }
 export async function writeAuth(action: 'register' | 'login' | 'logout', body: unknown) {
   return write(`/api/auth/${action}`, body)

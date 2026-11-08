@@ -6,7 +6,7 @@ const conflicts = (page: Page) => diagnostics(page).getByRole('list', { name: '�
 
 const choices = [
   ['CPU', 'Intel Core i5-14600K'], ['主板', '华硕 TUF B760M-PLUS WIFI'],
-  ['内存', '金士顿 FURY Beast 32GB (16G×2)'], ['SSD', '三星 990 PRO 1TB'],
+  ['内存', '金士顿 FURY Beast 16GB'], ['SSD', '三星 990 PRO 1TB'],
   ['电源', '海盗船 RM750e 全模组电源'], ['机箱', '九州风神 CC560 中塔机箱'],
   ['独立散热器', '九州风神 AK400 风冷散热器'],
 ]

@@ -42,7 +42,7 @@ public final class HardwareParameters {
             case GPU -> List.of(text("boardVariant","显卡版本"),number("vram","显存容量","GB",false),
                     choice("installationInterface","安装接口",true,List.of("PCIe x16","PCIe x8","PCIe x4")),text("pcieGeneration","PCIe 代际"),
                     number("boardPowerEstimate","总板卡功耗估算","W",true),number("length","显卡长度","mm",true),set("displayOutputs","有效视频输出",true,OUTPUTS));
-            case MEMORY -> List.of(choice("generation","内存代际",true,DDR),number("totalCapacity","套装总标称容量","GB",true),integer("stickCount","实际条数","条",true),
+            case MEMORY -> List.of(choice("generation","内存代际",true,DDR),number("totalCapacity","内存容量","GB",true),integer("stickCount","实际条数","条",true),
                     number("capacityPerStick","单条容量","GB",false),number("dataRate","标称数据速率","MT/s",false),number("jedecDataRate","默认数据速率","MT/s",false),
                     number("timingDataRate","下列时序对应的速率（须与标称速率一致）","MT/s",false),integer("casLatency","CAS 延迟（CL）","周期",false),
                     integer("trcd","tRCD","周期",false),integer("trp","tRP","周期",false));
@@ -149,6 +149,9 @@ public final class HardwareParameters {
     static List<String> missing(String category, JsonNode parameters) {
         List<String> reasons = new ArrayList<>();
         var values = values(parameters);
+        if (category.equals("MEMORY") && known(values,"stickCount") && values.get("stickCount").decimalValue().compareTo(BigDecimal.ONE) != 0) {
+            reasons.add("内存商品须按单根销售，实际条数必须为 1 条");
+        }
         for (var field : schema(category)) {
             if (field.required() && (!known(values,field.code()) || values.get(field.code()).isArray() && values.get(field.code()).isEmpty()
                     && !Set.of("displayOutputs","gpuInterfaces").contains(field.code()))) reasons.add(field.code() + "（" + field.label() + "）缺少已核验值");

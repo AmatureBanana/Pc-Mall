@@ -10,16 +10,34 @@ const SEEN = 'pc-mall.diy.seen.v1'
 
 const choices = [
   ['CPU', 'Intel Core i5-14600K'], ['主板', '华硕 TUF B760M-PLUS WIFI'],
-  ['内存', '金士顿 FURY Beast 32GB (16G×2)'], ['SSD', '三星 990 PRO 1TB'],
+  ['内存', '金士顿 FURY Beast 16GB'], ['SSD', '三星 990 PRO 1TB'],
   ['电源', '海盗船 RM750e 全模组电源'], ['机箱', '九州风神 CC560 中塔机箱'],
   ['独立散热器', '九州风神 AK400 风冷散热器'],
 ]
 
-/** Records any cart or order call so a restoration can prove it has no purchase side effect. */
+const cartPattern = /^\/api\/cart(\/|$)/
+const orderPattern = /^\/api\/orders(\/|$)/
+
+/**
+ * Records any cart or order write so a restoration can prove it has no purchase side effect.
+ * The task 13 header badge legitimately reads GET /api/cart after sign-in; a read is not a purchase
+ * side effect, so only writes and every order call are counted as traffic here.
+ */
 function watchPurchaseTraffic(page: Page) {
   const traffic: string[] = []
   page.on('request', event => {
-    if (/^\/api\/(cart|orders)(\/|$)/.test(new URL(event.url()).pathname)) traffic.push(event.url())
+    const path = new URL(event.url()).pathname
+    const write = !['GET', 'HEAD'].includes(event.method())
+    if (orderPattern.test(path) || cartPattern.test(path) && write) traffic.push(event.url())
+  })
+  return traffic
+}
+
+/** Records every cart call, reads included, for the separate "no cart row was created" evidence. */
+function watchCartTraffic(page: Page) {
+  const traffic: string[] = []
+  page.on('request', event => {
+    if (cartPattern.test(new URL(event.url()).pathname)) traffic.push(event.url())
   })
   return traffic
 }
@@ -140,6 +158,7 @@ async function selectAll(page: Page) {
 
 test('a guest configuration returns after sign-in with authoritative revalidation and no cart side effect', async ({ page }) => {
   const purchases = watchPurchaseTraffic(page)
+  const cartCalls = watchCartTraffic(page)
   await page.goto('/#diy')
   await selectAll(page)
   await expect(diagnostics(page)).toContainText('核心检测通过')
@@ -164,7 +183,10 @@ test('a guest configuration returns after sign-in with authoritative revalidatio
   await expect(configuration(page).getByLabel('当前参考总价')).toHaveText(total)
   // The restored references, their DIY source and the revision are exactly the guest's own workspace.
   expect(await workshopSnapshot(page)).toBe(saved)
+  // Only the header badge's read is allowed: restoration itself never writes or creates a cart line.
   expect(purchases).toEqual([])
+  expect(cartCalls).not.toEqual([])
+  expect(cartCalls.every(url => url.endsWith('/api/cart'))).toBeTruthy()
 })
 
 test('a failed or cancelled sign-in keeps the guest configuration and adds nothing', async ({ page }) => {

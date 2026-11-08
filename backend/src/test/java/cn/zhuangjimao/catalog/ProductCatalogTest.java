@@ -35,17 +35,18 @@ class ProductCatalogTest {
             assertThat(products).isNotEmpty();
             for (JsonNode product : products) {
                 assertThat(product.path("category").asText()).isEqualTo(category);
+                if (category.equals("GPU")) assertThat(product.path("categoryLabel").asText()).isEqualTo("显卡");
             }
         }
     }
 
     @Test
     void keywordSearchCombinesWithCategoryAndTreatsSqlWildcardsLiterally() throws Exception {
-        var response = ProductBrowserTest.get(app, "/api/products?category=MEMORY&keyword=kf560c36bbek2-32");
+        var response = ProductBrowserTest.get(app, "/api/products?category=MEMORY&keyword=kf560c36bbe2-16");
         assertThat(response.statusCode()).isEqualTo(200);
         JsonNode matches = json.readTree(response.body()).path("data");
         assertThat(matches.size()).isEqualTo(1);
-        assertThat(matches.get(0).path("sku").asText()).isEqualTo("KINGSTON-KF560C36BBEK2-32");
+        assertThat(matches.get(0).path("sku").asText()).isEqualTo("KINGSTON-KF560C36BBE2-16");
         for (String query : new String[]{"category=CPU&keyword=Kingston", "keyword=no-such-product", "keyword=%25", "keyword=%27%20OR%201%3D1--"}) {
             var empty = ProductBrowserTest.get(app, "/api/products?" + query);
             assertThat(empty.statusCode()).isEqualTo(200);
@@ -54,18 +55,21 @@ class ProductCatalogTest {
     }
 
     @Test
-    void detailsKeepSalesIdentityAndSeparateKitCapacityFromStickCount() throws Exception {
+    void detailsExposeOneMemoryModuleWithItsOwnSalesIdentity() throws Exception {
         JsonNode memory = json.readTree(ProductBrowserTest.get(app, "/api/products?category=MEMORY").body()).path("data").get(0);
         var response = ProductBrowserTest.get(app, "/api/products/" + memory.path("id").asLong());
         assertThat(response.statusCode()).isEqualTo(200);
         JsonNode detail = json.readTree(response.body()).path("data");
         assertThat(detail.path("product")).isEqualTo(memory);
-        assertThat(detail.path("description").asText()).contains("两条");
-        assertThat(parameter(detail, "totalCapacity").path("value").asInt()).isEqualTo(32);
+        assertThat(detail.path("description").asText()).contains("单根");
+        assertThat(parameter(detail, "totalCapacity").path("value").asInt()).isEqualTo(16);
         assertThat(parameter(detail, "totalCapacity").path("unit").asText()).isEqualTo("GB");
-        assertThat(parameter(detail, "stickCount").path("value").asInt()).isEqualTo(2);
+        assertThat(parameter(detail, "stickCount").path("value").asInt()).isEqualTo(1);
         assertThat(parameter(detail, "generation").path("value").asText()).isEqualTo("DDR5");
-        assertThat(parameter(detail, "stickCount").path("sourceUrl").asText()).endsWith("KF560C36BBEK2-32.pdf");
+        assertThat(parameter(detail, "stickCount").path("sourceUrl").asText()).endsWith("KF560C36BBE2-16.pdf");
+        var oldKit = ProductBrowserTest.get(app, "/api/products/7");
+        assertThat(oldKit.statusCode()).isEqualTo(409);
+        assertThat(json.readTree(oldKit.body()).path("code").asText()).isEqualTo("PRODUCT_NOT_SELECTABLE");
     }
 
     @Test
@@ -142,7 +146,7 @@ class ProductCatalogTest {
 
     @Test
     void currentDatabaseChangesAreVisibleAndOffSaleProductsCannotBeSelected() throws Exception {
-        JsonNode original = json.readTree(ProductBrowserTest.get(app, "/api/products?keyword=KF560C36BBEK2-32").body()).path("data").get(0);
+        JsonNode original = json.readTree(ProductBrowserTest.get(app, "/api/products?keyword=KF560C36BBE2-16").body()).path("data").get(0);
         long id = original.path("id").asLong();
         // Fixture mutation is the stimulus; all behavior is asserted through the public HTTP interface.
         // Application startup above enforces the dedicated test URL/account before this connection is opened.
@@ -158,7 +162,7 @@ class ProductCatalogTest {
                 JsonNode detail = json.readTree(ProductBrowserTest.get(app, "/api/products/" + id).body()).path("data");
                 assertThat(detail.path("product").path("price").asText()).isEqualTo("910.50");
                 assertThat(detail.path("product").path("stock").asInt()).isZero();
-                JsonNode list = json.readTree(ProductBrowserTest.get(app, "/api/products?keyword=KF560C36BBEK2-32").body()).path("data");
+                JsonNode list = json.readTree(ProductBrowserTest.get(app, "/api/products?keyword=KF560C36BBE2-16").body()).path("data");
                 assertThat(list.get(0).path("price").asText()).isEqualTo("910.50");
                 update.setString(3, "OFF_SALE");
                 update.executeUpdate();

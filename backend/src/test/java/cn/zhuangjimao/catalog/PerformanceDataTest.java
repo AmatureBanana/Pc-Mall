@@ -30,11 +30,11 @@ class PerformanceDataTest {
             assertThat(performance.path("reference").path("sampleIds").size()).isEqualTo(Integer.parseInt(e[1]));
             assertThat(performance.path("reference").path("snapshotSha256").asText()).isEqualTo("7e0875527aea34d96e99c933d1e82c62a20dac0a343720d252b12c21228812dd");
         }
-        var memory=capacityReference("KINGSTON-KF560C36BBEK2-32","47.252110","81.435185");
+        var memory=capacityReference("KINGSTON-KF560C36BBE2-16","21.429325","76.990741");
         assertThat(input(memory,"dataRate").path("value").asInt()).isEqualTo(6000);
         assertThat(input(memory,"casLatency").path("value").asInt()).isEqualTo(36);
-        assertThat(input(memory,"trcd").path("value").asInt()).isEqualTo(38);
-        assertThat(input(memory,"trp").path("value").asInt()).isEqualTo(38);
+        assertThat(input(memory,"trcd").path("value").asInt()).isEqualTo(44);
+        assertThat(input(memory,"trp").path("value").asInt()).isEqualTo(44);
         var samsung=capacityReference("SAMSUNG-MZ-V9P1T0BW","59.731544","100.000000");
         assertThat(input(samsung,"sequentialRead").path("value").asInt()).isEqualTo(7450);
         assertThat(input(samsung,"sequentialWrite").path("value").asInt()).isEqualTo(6900);
