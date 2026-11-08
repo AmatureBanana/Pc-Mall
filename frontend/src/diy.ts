@@ -1,7 +1,11 @@
-import { categories, isProductIdentity, type ProductIdentity } from './catalog'
+import { categories, formatPrice, isProductIdentity, type ProductIdentity } from './catalog'
 
 export const hardwareCategories = categories.filter(category => category.code !== 'ALL')
 export type HardwareCategory = typeof hardwareCategories[number]['code']
+export const hardwareLabels: Record<HardwareCategory, string> = {
+  CPU: 'CPU', MOTHERBOARD: '主板', GPU: '显卡', MEMORY: '内存',
+  SSD: 'SSD 固态硬盘', PSU: '电源', CASE: '机箱', COOLER: 'CPU 散热器',
+}
 export interface Selection { category: HardwareCategory; productId: number; source: 'DIY' }
 export interface Workspace { version: 1; revision: number; selections: Selection[]; integratedGraphicsCpuId?: number }
 export interface QuoteItem {
@@ -28,7 +32,19 @@ export interface Compatibility {
 }
 const ruleStates: RuleState[] = ['PASS', 'FAIL', 'UNKNOWN', 'PENDING', 'NOT_APPLICABLE']
 const missingStates = ['NOT_SELECTED', 'NOT_FOUND', 'OFF_SALE']
+const itemStates: QuoteItem['state'][] = ['VALID', 'NOT_FOUND', 'CATEGORY_MISMATCH', 'OFF_SALE', 'OUT_OF_STOCK']
 export const workspaceKey = 'pc-mall.diy.workspace.v1'
+/**
+ * A diagnostic-only record of what the user last saw. It is compared after sign-in to explain
+ * changes; it is never read as a price, stock or compatibility answer.
+ */
+export const seenKey = 'pc-mall.diy.seen.v1'
+export interface SeenItem {
+  category: HardwareCategory; productId: number; state: QuoteItem['state']; amount: string | null
+}
+export interface SeenSnapshot {
+  version: 1; revision: number; ruleVersion: string; catalogVersion: string; items: SeenItem[]
+}
 export const emptyWorkspace = (): Workspace => ({ version: 1, revision: 0, selections: [] })
 const isCategory = (value: unknown): value is HardwareCategory => hardwareCategories.some(category => category.code === value)
 const isMoney = (value: unknown): value is string => typeof value === 'string' && /^\d+\.\d{2}$/.test(value)
@@ -60,6 +76,99 @@ export function restoreWorkspace(): { workspace: Workspace; warning: string } {
 export function saveWorkspace(workspace: Workspace): string {
   try { sessionStorage.setItem(workspaceKey, JSON.stringify(workspace)); return '' }
   catch { return '浏览器暂时无法保存临时配置；当前选择仍可编辑，刷新后可能无法恢复。' }
+}
+
+/** Stores the diagnostic snapshot only; a storage failure never blocks editing or restoration. */
+export function rememberSeen(quote: Quote, check: Compatibility): void {
+  try {
+    const seen: SeenSnapshot = {
+      version: 1, revision: quote.revision, ruleVersion: check.ruleVersion, catalogVersion: check.catalogVersion,
+      items: quote.items.filter(item => item.product !== null).map(item => ({ category: item.category,
+        productId: item.productId, state: item.state, amount: item.amount })),
+    }
+    sessionStorage.setItem(seenKey, JSON.stringify(seen))
+  } catch { /* Diagnostics only; the workspace itself already reports its own save state. */ }
+}
+
+/** Reads the diagnostic snapshot; a damaged or absent snapshot simply yields no comparison. */
+export function readSeen(): SeenSnapshot | null {
+  try {
+    const raw = sessionStorage.getItem(seenKey)
+    return parseSeen(raw)
+  } catch { return null }
+}
+
+/** Shared validation for last-seen and the frozen sign-in diagnostic context. */
+export function parseSeen(raw: string | null): SeenSnapshot | null {
+  try {
+    if (raw === null) return null
+    const item = JSON.parse(raw)
+    if (!item || item.version !== 1 || !Number.isSafeInteger(item.revision) || item.revision < 0
+      || typeof item.ruleVersion !== 'string' || !item.ruleVersion.trim() || typeof item.catalogVersion !== 'string'
+      || !/^[a-f0-9]{64}$/.test(item.catalogVersion)
+      || !Array.isArray(item.items) || item.items.length > 8
+      || !item.items.every((entry: SeenItem) => entry && isCategory(entry.category)
+        && Number.isSafeInteger(entry.productId) && entry.productId > 0 && itemStates.includes(entry.state)
+        && (entry.state === 'VALID' ? isMoney(entry.amount) : entry.amount === null))
+      || new Set(item.items.map((entry: SeenItem) => entry.category)).size !== item.items.length) return null
+    return item as SeenSnapshot
+  } catch { return null }
+}
+
+export type ChangeKind = 'PRICE_CHANGED' | 'UNAVAILABLE' | 'AVAILABILITY_CHANGED'
+export interface RestoredChange {
+  kind: ChangeKind; category: HardwareCategory; productId: number; message: string
+}
+export interface Restoration {
+  changes: RestoredChange[]
+  /**
+   * True when the compatibility fingerprint moved, i.e. a parameter or sale state changed somewhere.
+   * The fingerprint is global, and a product revision also moves for price and stock edits, so this is
+   * deliberately a workspace-level statement rather than a per-product one.
+   */
+  catalogChanged: boolean
+  /** False when no comparable snapshot existed, so nothing can honestly be claimed. */
+  comparable: boolean
+}
+
+/**
+ * Explains what changed between the references the guest saw and the authoritative answer now.
+ * Only the server's current quote and diagnosis are trusted; the snapshot merely names a difference.
+ * A reference that is unavailable now is always reported, even when no snapshot can compare it.
+ */
+export function describeRestoration(seen: SeenSnapshot | null, quote: Quote, check: Compatibility): Restoration {
+  const changes: RestoredChange[] = []
+  // An empty workspace has nothing to restore, so nothing can honestly be claimed about it.
+  if (quote.items.length === 0) return { changes, catalogChanged: false, comparable: false }
+  const comparable = seen?.revision === quote.revision && seen.ruleVersion === check.ruleVersion
+    && seen.items.length === quote.items.length
+    && quote.items.every(item => seen.items.some(before => before.category === item.category && before.productId === item.productId))
+  quote.items.forEach(item => {
+    const label = hardwareLabels[item.category]
+    if (item.state !== 'VALID') {
+      changes.push({ kind: 'UNAVAILABLE', category: item.category, productId: item.productId,
+        message: `${label}：${item.message}` })
+      return
+    }
+    const before = comparable
+      ? seen.items.find(entry => entry.category === item.category && entry.productId === item.productId) : undefined
+    if (before && before.state !== item.state) {
+      const states: Record<QuoteItem['state'], string> = {
+        VALID: '可售', NOT_FOUND: '商品不存在', CATEGORY_MISMATCH: '类别不匹配',
+        OFF_SALE: '已下架', OUT_OF_STOCK: '暂时缺货',
+      }
+      changes.push({ kind: 'AVAILABILITY_CHANGED', category: item.category, productId: item.productId,
+        message: `${label}：商品状态由「${states[before.state]}」变为「${states[item.state]}」，已按当前库存与商品状态重验。` })
+    }
+    if (!before || before.amount === null || item.amount === null || before.amount === item.amount) return
+    changes.push({ kind: 'PRICE_CHANGED', category: item.category, productId: item.productId,
+      message: `${label}参考价由 ¥${formatPrice(before.amount)} 变为 ¥${formatPrice(item.amount)}` })
+  })
+  // The fingerprint covers the rule version, references, sale state and parameters but never the price,
+  // and a mismatched rule version makes old and new fingerprints incomparable.
+  const catalogChanged = comparable && seen.ruleVersion === check.ruleVersion
+    && seen.catalogVersion !== check.catalogVersion
+  return { changes, catalogChanged, comparable }
 }
 
 export async function loadQuote(workspace: Workspace, signal: AbortSignal): Promise<Quote> {

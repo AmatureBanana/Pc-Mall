@@ -4,7 +4,7 @@ import { ElButton, ElDialog, ElEmpty, ElSkeleton } from 'element-plus'
 import HardwareIcon from './HardwareIcon.vue'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
 import { formatPrice, formatParameter, imageFallback, loadProduct, loadProducts } from './catalog'
-import { hardwareCategories, type HardwareCategory } from './diy'
+import { hardwareCategories, hardwareLabels, type HardwareCategory } from './diy'
 import { useCatalogRequest } from './useCatalogRequest'
 import { useDiyWorkspace } from './useDiyWorkspace'
 
@@ -15,17 +15,15 @@ const brand = ref('')
 const sort = ref('default')
 const clearOpen = ref(false)
 const saved = ref(false)
-const { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear, save, quotation, compatibility } = useDiyWorkspace()
+const { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear, save,
+  quotation, compatibility, restoration, restore, dismissRestoration } = useDiyWorkspace()
 const { data: quote, status: quoteStatus, error: quoteError, refresh: refreshQuote } = quotation
 const { data: check, status: checkStatus, error: checkError, refresh: refreshCheck } = compatibility
 const { data: products, status, error, refresh } = useCatalogRequest(
   signal => loadProducts(signal, activeCategory.value, keyword.value), '候选商品')
 const order: HardwareCategory[] = ['CPU', 'COOLER', 'MOTHERBOARD', 'MEMORY', 'GPU', 'SSD', 'PSU', 'CASE']
 const displayCategories = order.map(code => { const category = hardwareCategories.find(item => item.code === code)!; return { ...category, label: code === 'GPU' ? '显卡' : category.label } })
-const labels: Record<HardwareCategory, string> = {
-  CPU: 'CPU', MOTHERBOARD: '主板', GPU: '显卡', MEMORY: '内存',
-  SSD: 'SSD 固态硬盘', PSU: '电源', CASE: '机箱', COOLER: 'CPU 散热器',
-}
+const labels: Record<HardwareCategory, string> = hardwareLabels
 const activeLabel = computed(() => labels[activeCategory.value])
 const brands = computed(() => [...new Set((products.value ?? []).map(product => product.brand))])
 const candidates = computed(() => {
@@ -117,7 +115,20 @@ function clearConfiguration() {
   resetFilters()
 }
 function saveConfiguration() { saved.value = save() }
+const restoredSummary = computed(() => {
+  if (restoration.value.phase !== 'ready') return null
+  const detail = restoration.value.restoration
+  return {
+    restored: restoration.value.restored,
+    changes: detail.changes,
+    catalogChanged: detail.catalogChanged,
+    comparable: detail.comparable,
+    consistent: detail.comparable && detail.changes.length === 0 && !detail.catalogChanged,
+  }
+})
 watch(() => workspace.value.revision, () => { saved.value = false })
+// The candidate list is a catalog read like the quote; a restoration must not leave it showing pre-login data.
+watch(() => restoration.value.phase, phase => { if (phase === 'ready') void refresh() })
 watch(activeCategory, () => { searchInput.value = keyword.value = brand.value = ''; sort.value = 'default'; void refresh() })
 watch(keyword, () => { brand.value = ''; void refresh() })
 onMounted(() => { void refresh() })
@@ -130,6 +141,33 @@ onMounted(() => { void refresh() })
       <span class="workspace-badge"><HardwareIcon name="alert"/>当前为装机方案编辑页，可随时修订配置</span>
     </div>
     <p v-if="storageWarning" class="diy-warning" role="alert">{{ storageWarning }}</p>
+    <section v-if="restoration.phase !== 'idle'" class="diy-restoration" :class="'restoration-' + restoration.phase"
+      role="region" aria-label="登录恢复" aria-live="polite">
+      <div class="restoration-head">
+        <h2><HardwareIcon name="check"/>登录恢复</h2>
+        <button v-if="restoration.phase === 'ready'" aria-label="关闭登录恢复摘要" @click="dismissRestoration">×</button>
+      </div>
+      <p v-if="restoration.phase === 'running'" class="restoration-note">正在按服务端当前数据重新读取已恢复的工作区…</p>
+      <template v-else-if="restoration.phase === 'ready' && restoredSummary">
+        <p class="restoration-note">已恢复登录前的工作区：{{ restoredSummary.restored }} 项商品引用、来源与修订 {{ workspace.revision }} 均已保留。
+          商品、价格、库存与参数均为服务端当前数据，本次恢复不会自动加入购物车或下单。</p>
+        <ul v-if="restoredSummary.changes.length" class="restoration-changes" aria-label="登录恢复发现的商品变化">
+          <li v-for="change in restoredSummary.changes" :key="change.category + change.kind">{{ change.message }}</li>
+        </ul>
+        <p v-if="restoredSummary.catalogChanged" class="restoration-change">服务端参数指纹与登录前所见不同，已按当前参数重新检测。</p>
+        <p v-if="restoredSummary.consistent" class="restoration-consistent">
+          <HardwareIcon name="check"/>当前数据与登录前所见一致；检测结论来自本次服务端重验。</p>
+        <p v-else-if="!restoredSummary.comparable && !restoredSummary.changes.length" class="restoration-note">
+          无法比较登录前所见数据，已直接按服务端当前数据重新核验；选择仍可继续调整。</p>
+        <p v-if="restoredSummary.changes.length" class="restoration-note">
+          失效或变化的商品引用均保留在工作区，可按当前状态替换或移除。</p>
+      </template>
+      <template v-else-if="restoration.phase === 'superseded'">
+        <p class="restoration-note">恢复期间配置已变更，旧的恢复结果不再使用；当前选择与检测结果对应修订 {{ workspace.revision }}。</p>
+      </template>
+      <p v-else-if="restoration.phase === 'error'" class="diy-warning" role="alert">{{ restoration.error }}
+        <button @click="restore">重试登录后重验</button></p>
+    </section>
     <div class="diy-columns">
       <section class="diy-configuration-region" aria-label="当前配置">
         <section class="diy-panel diy-categories">
@@ -167,12 +205,12 @@ onMounted(() => { void refresh() })
             </div>
             <p v-if="quoteStatus === 'ready' && quote?.total === null" class="diy-warning" role="alert">部分选择不可售，请替换或移除。可售项小计 ¥{{ formatPrice(quote.validSubtotal) }}，不是完整配置报价。</p>
             <p v-if="quoteStatus === 'error'" class="diy-warning" role="alert">{{ quoteError }}</p>
-            <div class="diy-quote-meta"><span>已选择 {{ count }} / 8 项 · 修订 {{ workspace.revision }}</span><button :disabled="quoteStatus === 'loading'" @click="refreshQuote(); refreshCheck()">{{ quoteStatus === 'error' ? '重试参考报价' : '刷新价格与库存' }}</button></div>
+            <div class="diy-quote-meta"><span>已选择 {{ count }} / 8 项 · 修订 {{ workspace.revision }}</span><button :disabled="quoteStatus === 'loading' || restoration.phase === 'running'" @click="refreshQuote(); refreshCheck()">{{ quoteStatus === 'error' ? '重试参考报价' : '刷新价格与库存' }}</button></div>
 
             <section class="diy-status-note" aria-label="兼容分项诊断" :aria-busy="checkStatus === 'loading'">
               <div class="revision-section-heading"><h3><HardwareIcon name="shield"/>兼容性检查</h3><span :class="'check-' + checkTone"><HardwareIcon :name="checkTone === 'pass' ? 'check' : 'alert'"/>{{ storyState }}</span></div>
               <p v-if="checkStatus === 'loading'" class="diy-check-note">正在读取服务端当前参数…</p>
-              <p v-else-if="checkStatus === 'error'" class="diy-warning" role="alert">{{ checkError }}<button @click="refreshCheck">重试兼容检测</button></p>
+              <p v-else-if="checkStatus === 'error'" class="diy-warning" role="alert">{{ checkError }}<button :disabled="restoration.phase === 'running'" @click="refreshCheck">重试兼容检测</button></p>
               <template v-else-if="check">
                 <ul v-if="conflicts.length" class="diy-conflicts" aria-label="兼容冲突">
                   <li v-for="item in conflicts" :key="item.rule">
@@ -367,6 +405,17 @@ onMounted(() => { void refresh() })
 .diy-save-note { text-align: center; font-size: 10px; line-height: 1.7; color: #8593ae; margin: 0 0 9px; }
 .diy-warning { color: #9c5d16; border: 1px solid #f0d6aa; background: #fff8ec; padding: 10px 12px; border-radius: 7px; font-size: 12px; line-height: 1.7; margin: 0; }
 .diy-warning button { color: #0968fa; border: 0; background: transparent; padding-inline: 5px; }
+.diy-restoration { margin: 0 0 12px; border: 1px solid #d7e4f8; border-radius: 12px; background: #f4f8ff; padding: 12px 16px; font-size: 12px; color: #2c4368; }
+.diy-restoration.restoration-error { background: #fff8ec; border-color: #f0d6aa; }
+.restoration-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.restoration-head h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; color: #0d172c; }
+.restoration-head h2 svg { width: 18px; height: 18px; color: #0a9e2b; }
+.restoration-head button { border: 0; background: transparent; font-size: 18px; line-height: 1; color: #6b7fa3; padding: 0 2px; }
+.restoration-note { margin: 7px 0 0; line-height: 1.75; }
+.restoration-changes { margin: 7px 0 0; padding-left: 18px; color: #9c5d16; line-height: 1.8; }
+.restoration-change { margin: 7px 0 0; color: #9c5d16; line-height: 1.75; }
+.restoration-consistent { display: flex; align-items: center; gap: 6px; margin: 7px 0 0; color: #0a9e2b; line-height: 1.75; }
+.restoration-consistent svg { width: 15px; height: 15px; }
 @media (max-width: 1450px) {
   .diy-columns { grid-template-columns: minmax(240px, .73fr) minmax(0, 1.3fr) minmax(340px, 1fr); }
   .diy-category-button { padding-inline: 9px; gap: 9px; }.category-copy strong { font-size: 15px; }.category-copy small { font-size: 11px; }.selection-state { font-size: 10px; }
