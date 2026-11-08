@@ -71,6 +71,10 @@ GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES ON pc_mal
 }
 . $envFile
 function Test-ProjectDatabases {
+    # Connection failures are expected during startup. Windows PowerShell 5.1
+    # turns redirected native stderr into errors; use the exit code to retry.
+    $ErrorActionPreference = 'Continue'
+    $PSNativeCommandUseErrorActionPreference = $false
     foreach ($account in @(
         @{ Name = 'pc_mall_demo'; Password = $env:DB_PASSWORD },
         @{ Name = 'pc_mall_test'; Password = $env:TEST_DB_PASSWORD }

@@ -8,7 +8,7 @@ import java.util.*;
 import static cn.zhuangjimao.catalog.CatalogAdministration.*;
 
 /** One typed vocabulary shared by validation and the administration form. Null means unknown. */
-final class HardwareParameters {
+public final class HardwareParameters {
     private HardwareParameters() {}
     record Field(String code, String label, String type, String unit, boolean required, List<String> options) {}
     private static final List<String> SOCKETS = List.of("LGA1851","LGA1700","LGA1200","LGA1151","LGA1150","LGA1155","AM5","AM4","sTR5","sTRX4");
@@ -68,20 +68,7 @@ final class HardwareParameters {
             if (!(field.unit().equals("CAPACITY") ? field.options().contains(unit) : field.unit().equals(unit))) invalid(code + " 单位无效，应使用 " + field.unit());
             if (!entry.has("value")) invalid(code + " 缺少 value；未知值请显式使用 null。");
             JsonNode value = entry.get("value");
-            if (!value.isNull()) {
-                switch (field.type()) {
-                    case "NUMBER", "INTEGER" -> {
-                        if (!value.isNumber() || value.decimalValue().signum() <= 0 || value.decimalValue().compareTo(new BigDecimal("1000000000")) > 0
-                                || field.type().equals("INTEGER") && !value.isIntegralNumber()) invalid(code + " 必须为有效正" + (field.type().equals("INTEGER") ? "整数。" : "数。"));
-                    }
-                    case "BOOLEAN" -> { if (!value.isBoolean()) invalid(code + " 必须为布尔值。"); }
-                    case "TEXT" -> { if (!value.isTextual() || value.asText().isBlank() || value.asText().length() > 100
-                            || !field.options().isEmpty() && !field.options().contains(value.asText())) invalid(code + " 取值无效。"); }
-                    case "SET" -> validateSet(code,value,field.options());
-                    case "SSD_SLOTS" -> validateSlots(value);
-                    default -> throw new IllegalStateException("Unknown parameter type");
-                }
-            }
+            if (!value.isNull()) validateValue(field, value);
             String source = CatalogAdministration.text(entry,"sourceUrl",1000);
             if (!source.isEmpty() && !httpUrl(source)) invalid(code + " 来源地址必须为 HTTP(S)。");
             result.addObject().put("code",code).put("label",field.label()).set("value",value);
@@ -91,6 +78,35 @@ final class HardwareParameters {
         validateCapacities(category,result);
         return result;
     }
+    /** Checks a stored non-null value against the same field vocabulary used by catalog writes. */
+    public static boolean isValidValue(HardwareCategory category, String code, JsonNode value) {
+        if (value == null || value.isNull()) return false;
+        var field = schema(category.name()).stream().filter(candidate -> candidate.code().equals(code)).findFirst().orElse(null);
+        if (field == null) return false;
+        try {
+            validateValue(field, value);
+            return true;
+        } catch (CatalogException exception) {
+            return false;
+        }
+    }
+
+    private static void validateValue(Field field, JsonNode value) {
+        String code = field.code();
+        switch (field.type()) {
+            case "NUMBER", "INTEGER" -> {
+                if (!value.isNumber() || value.decimalValue().signum() <= 0 || value.decimalValue().compareTo(new BigDecimal("1000000000")) > 0
+                        || field.type().equals("INTEGER") && !value.isIntegralNumber()) invalid(code + " 必须为有效正" + (field.type().equals("INTEGER") ? "整数。" : "数。"));
+            }
+            case "BOOLEAN" -> { if (!value.isBoolean()) invalid(code + " 必须为布尔值。"); }
+            case "TEXT" -> { if (!value.isTextual() || value.asText().isBlank() || value.asText().length() > 100
+                    || !field.options().isEmpty() && !field.options().contains(value.asText())) invalid(code + " 取值无效。"); }
+            case "SET" -> validateSet(code,value,field.options());
+            case "SSD_SLOTS" -> validateSlots(value);
+            default -> throw new IllegalStateException("Unknown parameter type");
+        }
+    }
+
     private static void validateSet(String code, JsonNode value, List<String> options) {
         if (!value.isArray() || value.size() > 30) invalid(code + " 必须为集合数组。");
         Set<String> seen = new HashSet<>();
@@ -136,7 +152,8 @@ final class HardwareParameters {
         for (var p : parameters) if (!p.path("value").isNull() && p.path("sourceUrl").asText().isBlank()) reasons.add(p.path("code").asText() + " 缺少参数来源");
         return reasons;
     }
-    static boolean httpUrl(String value) {
+    /** Shared with the compatibility rules: a parameter value is only trusted with a real source. */
+    public static boolean httpUrl(String value) {
         try { var uri = java.net.URI.create(value); return Set.of("http","https").contains(uri.getScheme()) && uri.getHost() != null && uri.getUserInfo() == null; }
         catch (IllegalArgumentException | NullPointerException e) { return false; }
     }

@@ -1,5 +1,33 @@
 import { expect, test } from '@playwright/test'
 
+test('saving a revised configuration keeps only this tab references and survives reload', async ({ page }) => {
+  await page.goto('/#diy')
+  await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
+  const configuration = page.getByRole('region', { name: '当前配置' })
+  await configuration.getByRole('button', { name: '保存方案', exact: true }).click()
+  await expect(configuration.getByRole('status')).toContainText('已保存到当前标签页')
+  expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!)))
+    .toEqual({ version: 1, revision: 1, selections: [{ category: 'CPU', productId: 1, source: 'DIY' }] })
+  await page.reload()
+  await expect(configuration.getByRole('link', { name: 'Intel Core i5-14600KF', exact: true })).toBeVisible()
+  await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥1,499.00')
+})
+
+test('a failed explicit save keeps editing available and never claims a successful save', async ({ page }) => {
+  await page.addInitScript(() => {
+    Storage.prototype.setItem = () => { throw new DOMException('Storage unavailable', 'QuotaExceededError') }
+  })
+  await page.goto('/#diy')
+  await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
+  const configuration = page.getByRole('region', { name: '当前配置' })
+  await configuration.getByRole('button', { name: '保存方案', exact: true }).click()
+  await expect(configuration.getByRole('status')).toContainText('配置尚未保存')
+  await expect(configuration.getByRole('status')).not.toContainText('已保存到当前标签页')
+  await expect(configuration.getByRole('link', { name: 'Intel Core i5-14600KF', exact: true })).toBeVisible()
+  await configuration.getByRole('button', { name: '移除 CPU', exact: true }).click()
+  await expect(configuration).toContainText('已选择 0 / 8 项')
+})
+
 test('F02 workspace: arbitrary order, replacement, removal, cancelled clear and tab refresh', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('link', { name: 'DIY 装机', exact: true }).click()
@@ -24,7 +52,7 @@ test('F02 workspace: arbitrary order, replacement, removal, cancelled clear and 
   await page.reload()
   await expect(configuration).toContainText('AMD Ryzen 7 7800X3D')
   await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥2,399.00')
-  await expect(configuration).toContainText('尚未检测')
+  await expect(page.getByRole('region', { name: '兼容分项诊断' })).toContainText('尚未选齐')
   await page.getByLabel('候选商品排序').selectOption('price-desc')
   await configuration.getByRole('button', { name: '清空配置', exact: true }).click()
   await confirm.getByRole('button', { name: '确认清空', exact: true }).click()
@@ -75,7 +103,7 @@ test('a late quotation cannot overwrite a replacement configuration', async ({ p
   release()
   await page.unrouteAll({ behavior: 'wait' })
   await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥2,399.00')
-  await expect(configuration).toContainText('配置修订 2')
+  await expect(configuration).toContainText('修订 2')
   await expect(configuration).not.toContainText('Intel Core i5-14600KF')
 })
 
@@ -100,7 +128,8 @@ test('all eight sales units remain editable with honest pending compatibility an
   }
   await expect(configuration).toContainText('已选择 8 / 8 项')
   await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥10,552.00')
-  await expect(configuration).toContainText('兼容状态：尚未检测')
+  await expect(page.getByRole('region', { name: '兼容分项诊断' })).toContainText('分项已通过')
+  await expect(configuration).toContainText('当前不能确认整机兼容')
   await configuration.getByRole('link', { name: '金士顿 FURY Beast 32GB (16G×2)', exact: true }).click()
   const detail = page.getByRole('dialog', { name: '商品详情' })
   await expect(detail.getByRole('row', { name: /实际内存条数/ })).toContainText('2 条')

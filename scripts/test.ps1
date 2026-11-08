@@ -49,7 +49,7 @@ try {
     for ($attempt = 0; $attempt -lt 60; $attempt++) {
         if ($browserServer.HasExited) { throw 'Browser test server exited; inspect .local/browser-test-server.log.' }
         try {
-            $response = Invoke-WebRequest "$env:BROWSER_BASE_URL/api/products" -TimeoutSec 1 -SkipHttpErrorCheck
+            $response = Invoke-WebRequest "$env:BROWSER_BASE_URL/api/products" -TimeoutSec 2 -UseBasicParsing
             if ($response.StatusCode -eq 200) { $ready = $true; break }
         } catch { }
         Start-Sleep -Milliseconds 500
