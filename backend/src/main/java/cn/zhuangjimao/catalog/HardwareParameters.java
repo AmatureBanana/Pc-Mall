@@ -27,6 +27,10 @@ public final class HardwareParameters {
     static List<Field> schema(String category) {
         return switch (HardwareCategory.valueOf(category)) {
             case CPU -> List.of(choice("socket","CPU 插槽",true,SOCKETS), field("integratedGraphics","可用核显","BOOLEAN","",true,List.of()),
+                    text("igpuModel","核显型号"),integer("igpuCores","核显图形核心数","个",false),integer("igpuExecutionUnits","核显执行单元数","EU",false),
+                    number("igpuFrequency","核显图形频率","MHz",false),number("igpuBaseFrequency","核显基础频率","MHz",false),number("igpuMaxFrequency","核显最大频率","MHz",false),
+                    text("igpuOutputInterfaces","核显显示接口"),text("igpuMaxResolutionHdmi","核显 HDMI 最大分辨率"),
+                    text("igpuMaxResolutionDisplayPort","核显 DisplayPort 最大分辨率"),text("igpuMaxResolutionEdp","核显 eDP 最大分辨率"),integer("igpuMaxDisplays","核显最大显示器数","台",false),
                     number("peakPowerEstimate","峰值功耗估算","W",true), set("memoryGenerations","支持内存代际",false,DDR),
                     integer("cores","核心数","核",false),integer("threads","线程数","线程",false),number("basePower","基础功耗","W",false),number("tdp","TDP","W",false));
             case MOTHERBOARD -> List.of(choice("socket","CPU 插槽",true,SOCKETS),choice("formFactor","主板板型",true,BOARDS),

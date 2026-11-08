@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElButton, ElDialog, ElEmpty, ElSkeleton } from 'element-plus'
 import HardwareIcon from './HardwareIcon.vue'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
-import { formatPrice, imageFallback, loadProducts } from './catalog'
+import { formatPrice, formatParameter, imageFallback, loadProduct, loadProducts } from './catalog'
 import { hardwareCategories, type HardwareCategory } from './diy'
 import { useCatalogRequest } from './useCatalogRequest'
 import { useDiyWorkspace } from './useDiyWorkspace'
@@ -15,15 +15,15 @@ const brand = ref('')
 const sort = ref('default')
 const clearOpen = ref(false)
 const saved = ref(false)
-const { workspace, storageWarning, count, select, remove, clear, save, quotation, compatibility } = useDiyWorkspace()
+const { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear, save, quotation, compatibility } = useDiyWorkspace()
 const { data: quote, status: quoteStatus, error: quoteError, refresh: refreshQuote } = quotation
 const { data: check, status: checkStatus, error: checkError, refresh: refreshCheck } = compatibility
 const { data: products, status, error, refresh } = useCatalogRequest(
   signal => loadProducts(signal, activeCategory.value, keyword.value), '候选商品')
 const order: HardwareCategory[] = ['CPU', 'COOLER', 'MOTHERBOARD', 'MEMORY', 'GPU', 'SSD', 'PSU', 'CASE']
-const displayCategories = order.map(code => hardwareCategories.find(category => category.code === code)!)
+const displayCategories = order.map(code => { const category = hardwareCategories.find(item => item.code === code)!; return { ...category, label: code === 'GPU' ? '显卡' : category.label } })
 const labels: Record<HardwareCategory, string> = {
-  CPU: 'CPU', MOTHERBOARD: '主板', GPU: '独立显卡', MEMORY: '内存',
+  CPU: 'CPU', MOTHERBOARD: '主板', GPU: '显卡', MEMORY: '内存',
   SSD: 'SSD 固态硬盘', PSU: '电源', CASE: '机箱', COOLER: 'CPU 散热器',
 }
 const activeLabel = computed(() => labels[activeCategory.value])
@@ -36,11 +36,36 @@ const candidates = computed(() => {
 })
 const selectedId = (category: HardwareCategory) => workspace.value.selections.find(item => item.category === category)?.productId
 const quoteItem = (category: HardwareCategory) => quote.value?.items.find(item => item.category === category)
-const selectionName = (category: HardwareCategory) => quoteItem(category)?.product?.name
-  ?? (selectedId(category) ? '商品 #' + selectedId(category) + (quoteStatus.value === 'loading' ? ' · 正在核价' : ' · 引用已保留') : '尚未选择')
+const cpuDetails = useCatalogRequest(async signal => {
+  const cpuId = selectedId('CPU')
+  return cpuId ? loadProduct(String(cpuId), signal) : null
+}, 'CPU 核显参数')
+const cpuDetail = cpuDetails.data
+const integratedGraphics = computed(() => {
+  const detail = cpuDetail.value
+  if (!detail || detail.product.id !== selectedId('CPU') || quoteItem('CPU')?.state !== 'VALID') return null
+  const capability = detail.parameters.find(item => item.code === 'integratedGraphics')
+  return capability?.value === true && /^https?:\/\//.test(capability.sourceUrl) ? detail : null
+})
+const integratedSelected = computed(() => Boolean(workspace.value.integratedGraphicsCpuId
+  && workspace.value.integratedGraphicsCpuId === selectedId('CPU')))
+const slotSelected = (category: HardwareCategory) => Boolean(selectedId(category) || category === 'GPU' && integratedSelected.value)
+const integratedParameters = computed(() => integratedGraphics.value?.parameters.filter(item => item.code.startsWith('igpu')) ?? [])
+const integratedModel = computed(() => integratedParameters.value.find(item => item.code === 'igpuModel')?.value ?? 'CPU 内置图形处理器')
+watch(() => [selectedId('CPU'), quoteItem('CPU')?.product?.revision], () => { void cpuDetails.refresh() }, { immediate: true })
+function selectionName(category: HardwareCategory) {
+  if (category === 'GPU' && integratedSelected.value) {
+    if (integratedGraphics.value) return '核显 · ' + integratedModel.value
+    return cpuDetails.status.value === 'ready' && quoteStatus.value === 'ready' ? '核显 · 当前不可用' : '核显 · 参数待重验'
+  }
+  return quoteItem(category)?.product?.name
+    ?? (selectedId(category) ? '商品 #' + selectedId(category) + (quoteStatus.value === 'loading' ? ' · 正在核价' : ' · 引用已保留') : '尚未选择')
+}
 const ruleLabels: Record<string, string> = {
   C01: 'CPU 与主板插槽', C02: '内存代际与条数', C03: 'CPU 与散热器插槽',
   C04: '主板板型与机箱', C05: 'SSD 规格、接口与协议',
+  C06: '独显与主板安装接口', C08: '电源额定功率',
+  C09: '显卡长度与机箱', C10: '散热器高度与机箱',
 }
 const conflictSolutions: Record<string, string> = {
   C01: '更换为插槽一致的 CPU 或主板，替换后重新检测。',
@@ -48,32 +73,33 @@ const conflictSolutions: Record<string, string> = {
   C03: '更换为明确支持当前 CPU 插槽的独立散热器，替换后重新检测。',
   C04: '更换为支持当前主板板型的机箱，或选择机箱支持板型内的主板。',
   C05: '选择规格、接口和协议同时匹配主板同一个有效安装组合的 SSD，或更换提供该组合的主板。',
+  C06: '选择主板提供可用安装接口的独显，或更换具有对应插槽的主板。',
+  C08: '按检测中的最低功率需求选择额定功率足够的电源，并核实 CPU 峰值与显卡总板功耗。',
+  C09: '更换为机箱有效限长内的显卡，或选择可容纳当前显卡的机箱。',
+  C10: '更换为机箱有效限高内的独立散热器，或选择限高足够的机箱。',
 }
 const conflicts = computed(() => check.value?.checks.filter(item => item.state === 'FAIL') ?? [])
+const checkedTime = computed(() => check.value ? new Date(check.value.checkedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false }) : '')
 const storyState = computed(() => {
   if (checkStatus.value === 'loading') return '正在检测'
   if (checkStatus.value === 'error') return '检测暂不可用'
-  if (check.value?.checks.some(item => item.state === 'FAIL')) return '发现冲突'
-  if (check.value?.missing.length) return '尚未选齐'
-  if (check.value?.checks.some(item => item.state === 'UNKNOWN')) return '存在未知参数'
-  return '分项已通过'
+  return { CORE_PASSED: '核心检测通过', INCOMPATIBLE: '发现冲突', INCOMPLETE: '尚未选齐',
+    UNVERIFIED: '存在未知参数', ERROR: '检测暂不可用' }[check.value?.status ?? 'ERROR']
 })
 const checkTone = computed(() => {
   if (checkStatus.value !== 'ready') return 'pending'
-  if (check.value?.checks.some(item => item.state === 'FAIL')) return 'fail'
-  if (check.value?.checks.some(item => item.state === 'UNKNOWN')) return 'unknown'
-  return check.value?.checks.some(item => item.state === 'PASS') ? 'pass' : 'pending'
+  return { CORE_PASSED: 'pass', INCOMPATIBLE: 'fail', INCOMPLETE: 'pending', UNVERIFIED: 'unknown', ERROR: 'pending' }[check.value?.status ?? 'ERROR']
 })
 const suggestions = computed(() => {
   const invalid = quote.value?.items.find(item => item.state !== 'VALID')
   if (invalid) return [invalid.message, '在左侧替换或移除失效配件，重新获取参考报价。']
   const result: string[] = []
   if (!selectedId('MOTHERBOARD')) result.push(selectedId('CPU')
-    ? '优先选择与 CPU 插槽匹配的主板，再核对内存代际与实际条数。'
+    ? '优先选择与 CPU 插槽匹配的主板。'
     : '可以从 CPU 或主板开始，按自己的顺序选择配件。')
   if (checkTone.value === 'unknown') result.unshift('先核实标记为“未知”的参数，再确认配件搭配。')
   if (!result.length) result.push(checkStatus.value === 'ready'
-    ? '已检查的项目没有发现冲突；图形输出、功率与安装空间仍需进一步核验。'
+    ? check.value?.corePassed ? '当前配置已完成九项核心检测，适用项目均通过；购买前仍需重新核验价格、库存及兼容结果。' : '请补齐配件并核实未知参数后重新检测。'
     : '请先完成兼容检测，再确认这些配件的搭配；当前配置仍可继续编辑。')
   return result.slice(0, 3)
 })
@@ -110,20 +136,21 @@ onMounted(() => { void refresh() })
           <div class="diy-panel-heading"><h2><span>①</span> 硬件分类</h2><p>选择类别浏览商品，已选配件会显示在下方</p></div>
           <nav aria-label="DIY 硬件分类" class="diy-category-list">
             <div v-for="category in displayCategories" :key="category.code" class="diy-category"
-              :class="{ active: activeCategory === category.code, chosen: selectedId(category.code), invalid: quoteItem(category.code) && quoteItem(category.code)!.state !== 'VALID' }"
+              :class="{ active: activeCategory === category.code, chosen: slotSelected(category.code), invalid: quoteItem(category.code) && quoteItem(category.code)!.state !== 'VALID' }"
               role="group" :aria-label="category.label + '配置'">
               <button class="diy-category-button" :aria-pressed="activeCategory === category.code"
-                :aria-label="(category.code === 'GPU' ? '独立显卡' : category.label) + ' ' + selectionName(category.code)"
+                :aria-label="(category.code === 'GPU' ? '显卡' : category.label) + ' ' + selectionName(category.code)"
                 @click="activeCategory = category.code">
                 <HardwareIcon :name="category.icon"/>
                 <span class="category-copy"><strong>{{ labels[category.code] }}</strong><small :title="selectionName(category.code)">{{ selectionName(category.code) }}</small></span>
-                <span class="selection-state"><span>{{ selectedId(category.code) ? '✓' : '○' }}</span>{{ selectedId(category.code) ? '已选择' : '未选择' }}</span>
+                <span class="selection-state"><span>{{ slotSelected(category.code) ? '✓' : '○' }}</span>{{ slotSelected(category.code) ? '已选择' : '未选择' }}</span>
               </button>
-              <div v-if="selectedId(category.code)" class="category-controls">
+              <div v-if="slotSelected(category.code)" class="category-controls">
                 <a v-if="quoteItem(category.code)?.product" :href="'#diy/product/' + selectedId(category.code)" :aria-label="quoteItem(category.code)!.product!.name">型号与详情 ↗</a>
+                <span v-if="category.code === 'GPU' && integratedSelected" class="slot-price">¥0.00</span>
                 <span v-if="quoteItem(category.code)?.amount" class="slot-price">¥{{ formatPrice(quoteItem(category.code)!.amount!) }}</span>
-                <button :aria-label="'替换 ' + category.label" title="替换配件" @click="activeCategory = category.code"><HardwareIcon name="replace"/></button>
-                <button :aria-label="'移除 ' + category.label" title="移除配件" @click="remove(category.code)"><HardwareIcon name="trash"/></button>
+                <button :aria-label="'替换 ' + (category.code === 'GPU' ? '显卡' : category.label)" title="替换配件" @click="activeCategory = category.code"><HardwareIcon name="replace"/></button>
+                <button :aria-label="'移除 ' + (category.code === 'GPU' ? '显卡' : category.label)" title="移除配件" @click="remove(category.code)"><HardwareIcon name="trash"/></button>
               </div>
               <small v-if="quoteItem(category.code) && quoteItem(category.code)!.state !== 'VALID'" class="slot-problem">{{ quoteItem(category.code)!.message }}</small>
             </div>
@@ -140,7 +167,7 @@ onMounted(() => { void refresh() })
             </div>
             <p v-if="quoteStatus === 'ready' && quote?.total === null" class="diy-warning" role="alert">部分选择不可售，请替换或移除。可售项小计 ¥{{ formatPrice(quote.validSubtotal) }}，不是完整配置报价。</p>
             <p v-if="quoteStatus === 'error'" class="diy-warning" role="alert">{{ quoteError }}</p>
-            <div class="diy-quote-meta"><span>已选择 {{ count }} / 8 项 · 修订 {{ workspace.revision }}</span><button :disabled="quoteStatus === 'loading'" @click="refreshQuote">{{ quoteStatus === 'error' ? '重试参考报价' : '刷新价格与库存' }}</button></div>
+            <div class="diy-quote-meta"><span>已选择 {{ count }} / 8 项 · 修订 {{ workspace.revision }}</span><button :disabled="quoteStatus === 'loading'" @click="refreshQuote(); refreshCheck()">{{ quoteStatus === 'error' ? '重试参考报价' : '刷新价格与库存' }}</button></div>
 
             <section class="diy-status-note" aria-label="兼容分项诊断" :aria-busy="checkStatus === 'loading'">
               <div class="revision-section-heading"><h3><HardwareIcon name="shield"/>兼容性检查</h3><span :class="'check-' + checkTone"><HardwareIcon :name="checkTone === 'pass' ? 'check' : 'alert'"/>{{ storyState }}</span></div>
@@ -166,7 +193,8 @@ onMounted(() => { void refresh() })
                 </li>
               </ul>
               <ul v-else><li v-for="suggestion in suggestions" :key="suggestion">{{ suggestion }}</li></ul>
-              <p class="verification-note">图形输出、功率与空间等检查尚未完成，当前不能确认整机兼容。</p>
+              <ul v-if="check?.checks.some(item => item.state === 'UNKNOWN')" aria-label="待核实参数"><li v-for="item in check.checks.filter(item => item.state === 'UNKNOWN')" :key="item.rule">{{ ruleLabels[item.rule] }}：{{ item.message }}</li></ul>
+              <details v-if="check" class="verification-note" aria-label="检测记录"><summary>检测记录</summary><p>修订 {{ check.revision }} · 规则 {{ check.ruleVersion }}<br/>参数版本 {{ check.catalogVersion.slice(0, 12) }} · {{ checkedTime }}（北京时间）</p></details>
             </section>
             <div class="diy-actions">
               <p class="diy-save-note" role="status">{{ saved ? '已保存到当前标签页，刷新后可继续编辑。' : storageWarning ? '配置尚未保存，当前页面仍可继续编辑；请重试保存。' : '方案保存在当前标签页，刷新后可继续编辑。' }}</p>
@@ -177,15 +205,29 @@ onMounted(() => { void refresh() })
       </section>
 
       <section class="diy-panel diy-candidates" aria-label="候选商品" :aria-busy="status === 'loading'">
-        <div class="diy-panel-heading"><div class="diy-title-row"><h2><span>②</span> 候选商品（{{ activeLabel }}）</h2><span class="candidate-count">{{ status === 'ready' ? '共 ' + candidates.length + ' 件' : '加载中' }}</span></div><p>从下方选择一款，支持任意顺序选择、替换或移除</p></div>
+        <div class="diy-panel-heading"><div class="diy-title-row"><h2><span>②</span> 候选商品（{{ activeLabel }}）</h2><span class="candidate-count">{{ status === 'ready' ? '共 ' + (candidates.length + (activeCategory === 'GPU' && integratedGraphics ? 1 : 0)) + ' 件' : '加载中' }}</span></div><p>从下方选择一款，{{ activeCategory === 'GPU' ? '支持核显或独立显卡，' : '' }}支持任意顺序选择、替换或移除</p></div>
         <div class="diy-filters">
           <div class="diy-brands"><span>品牌：</span><button :class="{ active: !brand }" @click="brand = ''">全部</button><button v-for="item in brands" :key="item" :class="{ active: brand === item }" @click="brand = item">{{ item }}</button></div>
           <div class="diy-search-row"><label>排序：<select v-model="sort" aria-label="候选商品排序"><option value="default">综合排序</option><option value="price-asc">价格从低到高</option><option value="price-desc">价格从高到低</option></select></label><form @submit.prevent="search"><HardwareIcon name="search"/><input v-model="searchInput" aria-label="搜索当前类别商品" placeholder="在当前类别中搜索型号或参数" maxlength="100"/><button type="submit" aria-label="搜索候选商品">搜索</button></form></div>
         </div>
         <div class="diy-candidate-list">
+          <article v-if="activeCategory === 'GPU' && integratedGraphics" class="diy-product diy-integrated" :class="{ selected: integratedSelected }" aria-label="CPU 核显候选">
+            <div class="diy-product-image"><div class="igpu-logo" :class="{ amd: integratedGraphics.product.brand === 'AMD' }"><strong>{{ integratedGraphics.product.brand }}</strong><small>{{ integratedGraphics.product.brand === 'AMD' ? 'Radeon' : 'UHD' }}<br/>Graphics</small></div></div>
+            <div class="diy-product-copy"><h3>核显（使用 CPU 自带）</h3><p>{{ integratedGraphics.product.name }} · {{ integratedModel }}</p>
+              <div class="igpu-tags"><span>集成显卡</span><span>共享系统内存</span><span>渲染参考待核验</span></div>
+              <details class="igpu-specs"><summary>核显规格与支持能力 ›</summary>
+                <dl><template v-for="parameter in integratedParameters" :key="parameter.code"><dt>{{ parameter.label }}</dt><dd>{{ formatParameter(parameter) }} <a :href="parameter.sourceUrl" target="_blank" rel="noopener noreferrer">来源 ↗</a></dd></template></dl>
+                <p>实际显示输出取决于主板接口、分辨率与刷新率。核显随 CPU 提供，功耗包含于 CPU 估算中。</p>
+              </details>
+            </div>
+            <div class="diy-product-price"><strong>¥0.00</strong><small>可用（随 CPU 提供）</small></div>
+            <ElButton :type="integratedSelected ? 'success' : 'primary'" :plain="!integratedSelected" :disabled="integratedSelected" :aria-label="integratedSelected ? '已选择 CPU 核显' : '选择 CPU 核显'" @click="selectIntegratedGraphics(integratedGraphics.product.id)">{{ integratedSelected ? '✓ 已选择' : '＋ 选择' }}</ElButton>
+          </article>
+          <p v-if="activeCategory === 'GPU' && integratedSelected && !integratedGraphics && cpuDetails.status.value === 'ready' && quoteStatus === 'ready'" class="diy-warning" role="alert">当前 CPU 核显不可用，请移除核显选择或更换 CPU / 独立显卡。</p>
+          <p v-if="activeCategory === 'GPU' && selectedId('CPU') && cpuDetails.status.value === 'error'" class="diy-warning" role="alert">{{ cpuDetails.error.value }}<button @click="cpuDetails.refresh">重试核显参数</button></p>
           <ElSkeleton v-if="status === 'loading'" animated :rows="8"/>
           <div v-else-if="status === 'error'" class="diy-empty" role="alert"><HardwareIcon name="alert"/><h3>候选商品加载失败</h3><p>{{ error }}</p><ElButton type="primary" @click="refresh">重新加载候选商品</ElButton></div>
-          <ElEmpty v-else-if="!candidates.length" description="没有找到符合条件的商品"><ElButton @click="resetFilters">清除候选筛选</ElButton></ElEmpty>
+          <ElEmpty v-else-if="!candidates.length && !(activeCategory === 'GPU' && integratedGraphics)" description="没有找到符合条件的商品"><ElButton @click="resetFilters">清除候选筛选</ElButton></ElEmpty>
           <article v-for="product in status === 'ready' ? candidates : []" :key="product.id" class="diy-product" :class="{ selected: selectedId(product.category) === product.id }">
             <a :href="'#diy/product/' + product.id" class="diy-product-image" tabindex="-1" aria-hidden="true"><img :src="product.imageUrl" :alt="product.categoryLabel + '品类示意图'" @error="imageFallback"/></a>
             <div class="diy-product-copy"><h3><a :href="'#diy/product/' + product.id">{{ product.name }}</a></h3><p>{{ product.summary }}</p><ProductPerformanceTags :tags="product.performanceTags" compact/><a :href="'#diy/product/' + product.id" class="diy-spec-link">型号与完整参数 ›</a></div>
@@ -262,6 +304,10 @@ onMounted(() => { void refresh() })
 .diy-search-row form button { border: 0; background: transparent; white-space: nowrap; padding: 3px; color: var(--blue); font-size: 12px; }
 .diy-candidate-list { margin: 0 12px; padding: 3px 0; min-height: 320px; max-height: 660px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d0daf0 transparent; }
 .diy-product { display: grid; grid-template-columns: 78px minmax(0, 1fr) auto 82px; align-items: center; gap: 10px; min-height: 132px; border: 1px solid #dfe6f4; border-radius: 13px; padding: 13px 12px; margin-bottom: 8px; background: #fff9; }
+.igpu-logo { width: 64px; height: 64px; border-radius: 6px; background: #0076ce; color: white; display: flex; flex-direction: column; justify-content: center; padding: 8px; box-sizing: border-box; }
+.igpu-logo.amd { background: #bd2226; }.igpu-logo strong { font-size: 17px; }.igpu-logo small { font-size: 9px; }
+.igpu-tags { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0; }.igpu-tags span { background: #edf3ff; border: 1px solid #dee8ff; padding: 3px 6px; border-radius: 6px; font-size: 11px; }
+.igpu-specs { font-size: 11px; color: #62759c; }.igpu-specs summary { cursor: pointer; }.igpu-specs dl { display: grid; grid-template-columns: auto 1fr; gap: 6px; }.igpu-specs dd { margin: 0; overflow-wrap: anywhere; }.igpu-specs a { color: #0968fa; }.igpu-specs p { line-height: 1.6; }
 .diy-product.selected { border-color: #90b5fc; background: #f0f5ff; }
 .diy-product-image { display: flex; align-items: center; justify-content: center; height: 88px; }
 .diy-product-image img { width: 78px; height: 88px; object-fit: contain; }
@@ -335,6 +381,15 @@ onMounted(() => { void refresh() })
   .diy-heading > p, .workspace-badge { display: none; }.diy-heading h1 { font-size: 24px; }.diy-heading { min-height: 74px; }
 }
 @media (max-width: 700px) {
+  .diy-integrated { grid-template-columns: 54px minmax(0, 1fr); align-items: start; }
+  .diy-integrated .diy-product-image { grid-column: 1; grid-row: 1; height: 64px; }
+  .diy-integrated .diy-product-copy { grid-column: 2; grid-row: 1; }
+  .diy-integrated .diy-product-price { grid-column: 2; grid-row: 2; align-items: flex-start; }
+  .diy-integrated > .el-button { grid-column: 2; grid-row: 3; justify-self: start; }
+  .diy-integrated .igpu-logo { width: 54px; height: 54px; padding: 6px; }
+  .igpu-specs dl { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .igpu-specs dd { margin-bottom: 5px; }
+
   .diy-columns { grid-template-columns: minmax(0, 1fr); }.diy-categories { grid-column: 1; grid-row: 1; min-height: 0; }.diy-candidates { grid-column: 1; grid-row: 2; min-height: 420px; }.diy-configuration { grid-column: 1; grid-row: 3; }
   .diy-category-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }.diy-category-button { min-height: 64px; gap: 8px; }.diy-category-button > svg { width: 24px; height: 24px; }.selection-state { display: none; }
   .category-controls { padding-left: 10px; gap: 7px; }.category-controls .slot-price { margin-left: auto; }.diy-category-note { padding: 12px 0; font-size: 11px; }

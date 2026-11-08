@@ -28,12 +28,18 @@ class CompatibilityController {
         if (input == null || !input.isObject()) throw invalid();
         var selections = new EnumMap<HardwareCategory, Long>(HardwareCategory.class);
         long revision = -1;
+        Long integratedGraphicsCpuId = null;
         var fields = input.fields();
         while (fields.hasNext()) {
             var field = fields.next();
             if (field.getKey().equals("revision")) {
                 if (!safe(field.getValue())) throw invalid();
                 revision = field.getValue().asLong();
+                continue;
+            }
+            if (field.getKey().equals("integratedGraphicsCpuId")) {
+                if (!safe(field.getValue()) || field.getValue().asLong() < 1) throw invalid();
+                integratedGraphicsCpuId = field.getValue().asLong();
                 continue;
             }
             HardwareCategory category;
@@ -43,8 +49,16 @@ class CompatibilityController {
             selections.put(category, field.getValue().asLong());
         }
         if (revision < 0) throw invalid();
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(new CheckResponse(compatibility.check(revision, selections)));
+        try {
+            return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                    .body(new CheckResponse(compatibility.check(revision, selections, integratedGraphicsCpuId)));
+        } catch (InvalidConfiguration exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            org.slf4j.LoggerFactory.getLogger(CompatibilityController.class).error("Compatibility check failed", exception);
+            return ResponseEntity.status(503).cacheControl(CacheControl.noStore())
+                    .body(new CheckResponse(compatibility.failure(revision)));
+        }
     }
 
     private static boolean safe(JsonNode value) {

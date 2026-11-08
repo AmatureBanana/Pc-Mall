@@ -281,8 +281,8 @@ class CompatibilityRulesTest {
     void everyExecutedRuleIsAlwaysReportedOnceInFrozenOrder() {
         var rules = CompatibilityRules.check(parts(part(CPU, "Intel Core i5-14600KF", text("socket", "LGA1700"))));
 
-        assertThat(rules).extracting(RuleResult::rule).containsExactly("C01", "C02", "C03", "C04", "C05");
-        assertThat(rules).extracting(RuleResult::state).containsOnly(RuleState.PENDING);
+        assertThat(rules).extracting(RuleResult::rule).containsExactly("C01", "C02", "C03", "C04", "C05", "C06", "C08", "C09", "C10");
+        assertThat(rules).extracting(RuleResult::state).containsOnly(RuleState.PENDING, RuleState.NOT_APPLICABLE);
     }
 
     @Test
@@ -294,7 +294,7 @@ class CompatibilityRulesTest {
                     part(CASE, "机箱", set("supportedMotherboardFormFactors", List.of("Micro-ATX")))));
             assertThat(rule(rules, "C01").state()).as("socket=%s", value).isEqualTo(RuleState.UNKNOWN);
             assertThat(rule(rules, "C04").state()).isEqualTo(RuleState.PASS);
-            assertThat(rules).hasSize(5);
+            assertThat(rules).hasSize(9);
         }
     }
 
