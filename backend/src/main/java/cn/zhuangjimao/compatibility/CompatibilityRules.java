@@ -9,6 +9,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import static cn.zhuangjimao.catalog.HardwareCategory.PSU;
 
 import static cn.zhuangjimao.catalog.HardwareCategory.CASE;
 import static cn.zhuangjimao.catalog.HardwareCategory.COOLER;
@@ -16,9 +19,10 @@ import static cn.zhuangjimao.catalog.HardwareCategory.CPU;
 import static cn.zhuangjimao.catalog.HardwareCategory.MEMORY;
 import static cn.zhuangjimao.catalog.HardwareCategory.MOTHERBOARD;
 import static cn.zhuangjimao.catalog.HardwareCategory.SSD;
+import static cn.zhuangjimao.catalog.HardwareCategory.GPU;
 
 /**
- * The C01–C05 core rules. Every input is a server-side catalog record: a client never supplies
+ * The nine active core rules; C07 graphics-output validation was removed by product decision. Every input is a server-side catalog record: a client never supplies
  * parameters, categories or a pass flag. A part that is absent or unavailable is PENDING, a
  * parameter without a verified value or source is UNKNOWN, and only two known values can decide
  * PASS or FAIL. Each rule reports its own result, so one failure never clears the others.
@@ -32,7 +36,50 @@ public final class CompatibilityRules {
     private CompatibilityRules() {}
 
     static List<RuleResult> check(Map<HardwareCategory, Part> parts) {
-        return List.of(socket(parts), memory(parts), cooler(parts), boardFormFactor(parts), storage(parts));
+        return check(parts, parts.containsKey(GPU));
+    }
+
+    static List<RuleResult> check(Map<HardwareCategory, Part> parts, boolean gpuSelected) {
+        var connection = graphicsInterface(parts, gpuSelected);
+        var length = space(parts, "C09", GPU, "length", "maxGpuLength", gpuSelected);
+        return List.of(socket(parts), memory(parts), cooler(parts), boardFormFactor(parts), storage(parts), connection,
+                power(parts, gpuSelected), length,
+                space(parts, "C10", COOLER, "height", "maxCoolerHeight", gpuSelected));
+    }
+
+    private static RuleResult space(Map<HardwareCategory, Part> parts, String rule, HardwareCategory category, String size, String limit, boolean gpuSelected) {
+        var read = new Read(parts, Field.of(category, size), Field.of(CASE, limit));
+        if (category == GPU && !gpuSelected) return read.result(rule, RuleState.NOT_APPLICABLE, "未选择独显，显卡长度检查不适用。");
+        if (!read.allPresent()) return read.pending(rule);
+        if (!read.allUsable()) return read.unknown(rule, Labels.of(category) + "尺寸或机箱有效限制缺少已核验值或来源，无法判断。");
+        BigDecimal actual = read.decimal(category, size), maximum = read.decimal(CASE, limit);
+        return read.result(rule, actual.compareTo(maximum) <= 0 ? RuleState.PASS : RuleState.FAIL,
+                Labels.of(category) + "尺寸 " + actual.toPlainString() + " mm，机箱默认安装有效限制 " + maximum.toPlainString() + " mm；尺寸不超过限制才通过。");
+    }
+
+    private static RuleResult power(Map<HardwareCategory, Part> parts, boolean gpuSelected) {
+        var fields = new ArrayList<Field>(List.of(Field.of(CPU, "peakPowerEstimate"), Field.of(PSU, "ratedPower")));
+        if (gpuSelected) fields.add(Field.of(GPU, "boardPowerEstimate"));
+        var read = new Read(parts, fields.toArray(Field[]::new));
+        if (!read.allPresent()) return read.pending("C08");
+        if (!read.allUsable()) return read.unknown("C08", "CPU 峰值功耗、显卡总板功耗或电源额定功率缺少已核验值或来源，不能以 TDP 代替峰值。");
+        BigDecimal cpu = read.decimal(CPU, "peakPowerEstimate");
+        BigDecimal gpu = parts.containsKey(GPU) ? read.decimal(GPU, "boardPowerEstimate") : BigDecimal.ZERO;
+        BigDecimal required = cpu.add(gpu).add(new BigDecimal("80")).multiply(new BigDecimal("1.30")).setScale(0, RoundingMode.CEILING);
+        BigDecimal rated = read.decimal(PSU, "ratedPower");
+        return read.result("C08", rated.compareTo(required) >= 0 ? RuleState.PASS : RuleState.FAIL,
+                "最低需求 ceil(1.30 × (" + cpu.toPlainString() + " + " + gpu.toPlainString() + " + 80)) = "
+                        + required.toPlainString() + " W；电源额定 " + rated.toPlainString() + " W，额定功率大于或等于需求才通过。");
+    }
+
+    private static RuleResult graphicsInterface(Map<HardwareCategory, Part> parts, boolean gpuSelected) {
+        var read = new Read(parts, Field.of(GPU, "installationInterface"), Field.of(MOTHERBOARD, "gpuInterfaces"));
+        if (!gpuSelected) return read.result("C06", RuleState.NOT_APPLICABLE, "未选择独显，安装接口检查不适用。");
+        if (!read.allPresent()) return read.pending("C06");
+        if (!read.allUsable()) return read.unknown("C06", "显卡安装接口或主板可用插槽缺少已核验值或来源，无法判断。");
+        String connection = read.value(GPU, "installationInterface");
+        return read.result("C06", read.values(MOTHERBOARD, "gpuInterfaces").contains(connection) ? RuleState.PASS : RuleState.FAIL,
+                "显卡安装接口为 " + connection + "，主板支持：" + String.join("、", read.values(MOTHERBOARD, "gpuInterfaces")) + "；仅比较安装接口，不以 PCIe 代际差异判定冲突。");
     }
 
     /** C01: the CPU socket must equal the motherboard socket. */
@@ -172,7 +219,8 @@ public final class CompatibilityRules {
         boolean usable(HardwareCategory category, String code) {
             JsonNode value = field(category, code);
             JsonNode parameter = parameter(category, code);
-            if (!HardwareParameters.isValidValue(category, code, value) || value.isArray() && value.isEmpty()) return false;
+            if (!HardwareParameters.isValidValue(category, code, value) || value.isArray() && value.isEmpty()
+                    && !List.of("displayOutputs", "gpuInterfaces").contains(code)) return false;
             return parameter != null && HardwareParameters.httpUrl(parameter.path("sourceUrl").asText());
         }
 
@@ -203,6 +251,7 @@ public final class CompatibilityRules {
         }
 
         long integer(HardwareCategory category, String code) { return field(category, code).asLong(); }
+        BigDecimal decimal(HardwareCategory category, String code) { return field(category, code).decimalValue(); }
 
         JsonNode field(HardwareCategory category, String code) {
             JsonNode parameter = parameter(category, code);

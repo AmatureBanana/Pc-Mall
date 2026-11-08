@@ -3,7 +3,7 @@ import { categories, isProductIdentity, type ProductIdentity } from './catalog'
 export const hardwareCategories = categories.filter(category => category.code !== 'ALL')
 export type HardwareCategory = typeof hardwareCategories[number]['code']
 export interface Selection { category: HardwareCategory; productId: number; source: 'DIY' }
-export interface Workspace { version: 1; revision: number; selections: Selection[] }
+export interface Workspace { version: 1; revision: number; selections: Selection[]; integratedGraphicsCpuId?: number }
 export interface QuoteItem {
   category: HardwareCategory; productId: number; quantity: 1
   state: 'VALID' | 'NOT_FOUND' | 'CATEGORY_MISMATCH' | 'OFF_SALE' | 'OUT_OF_STOCK'
@@ -20,8 +20,11 @@ export interface RuleCheck {
 }
 export interface MissingPart { category: HardwareCategory; label: string; state: 'NOT_SELECTED' | 'NOT_FOUND' | 'OFF_SALE'; message: string }
 export interface Compatibility {
-  revision: number; ruleVersion: string; checkedAt: string; corePassed: false
+  revision: number; ruleVersion: string; checkedAt: string; catalogVersion: string
+  status: 'CORE_PASSED' | 'INCOMPATIBLE' | 'INCOMPLETE' | 'UNVERIFIED' | 'ERROR'
+  complete: boolean; corePassed: boolean
   checks: RuleCheck[]; missing: MissingPart[]; unexecutedRules: { rule: string; reason: string }[]
+  unexecutedExtensions: { rule: string; reason: string }[]
 }
 const ruleStates: RuleState[] = ['PASS', 'FAIL', 'UNKNOWN', 'PENDING', 'NOT_APPLICABLE']
 const missingStates = ['NOT_SELECTED', 'NOT_FOUND', 'OFF_SALE']
@@ -39,12 +42,16 @@ export function restoreWorkspace(): { workspace: Workspace; warning: string } {
       || item.revision >= Number.MAX_SAFE_INTEGER || !Array.isArray(item.selections) || item.selections.length > 8
       || !item.selections.every((selection: Selection) => selection && isCategory(selection.category)
         && Number.isSafeInteger(selection.productId) && selection.productId > 0 && selection.source === 'DIY')
+      || item.integratedGraphicsCpuId !== undefined && (!Number.isSafeInteger(item.integratedGraphicsCpuId)
+        || !item.selections.some((selection: Selection) => selection.category === 'CPU' && selection.productId === item.integratedGraphicsCpuId)
+        || item.selections.some((selection: Selection) => selection.category === 'GPU'))
       || new Set(item.selections.map((selection: Selection) => selection.category)).size !== item.selections.length) {
       throw new Error('Invalid workspace')
     }
     // Restore references only. Client-saved prices, inventory or quote results are never trusted.
     return { workspace: { version: 1, revision: item.revision, selections: item.selections.map((selection: Selection) =>
-      ({ category: selection.category, productId: selection.productId, source: selection.source })) }, warning: '' }
+      ({ category: selection.category, productId: selection.productId, source: selection.source })),
+      ...(item.integratedGraphicsCpuId === undefined ? {} : { integratedGraphicsCpuId: item.integratedGraphicsCpuId }) }, warning: '' }
   } catch {
     return { workspace: emptyWorkspace(), warning: '本标签页的临时配置无法恢复，原存储未删除；重新选择后将保存新的配置。' }
   }
@@ -84,6 +91,7 @@ export async function loadQuote(workspace: Workspace, signal: AbortSignal): Prom
  */
 export async function loadCompatibility(workspace: Workspace, signal: AbortSignal): Promise<Compatibility> {
   const body: Record<string, number> = { revision: workspace.revision }
+  if (workspace.integratedGraphicsCpuId) body.integratedGraphicsCpuId = workspace.integratedGraphicsCpuId
   workspace.selections.forEach(selection => { body[selection.category] = selection.productId })
   const csrf = await fetch('/api/auth/csrf', { signal, cache: 'no-store', headers: { Accept: 'application/json' } })
   if (!csrf.ok) throw new Error('兼容检测暂时不可用，已保留当前选择，请重试。')
@@ -96,14 +104,26 @@ export async function loadCompatibility(workspace: Workspace, signal: AbortSigna
     body: JSON.stringify(body) })
   if (!response.ok) throw new Error('兼容检测暂时不可用，已保留当前选择，请重试。')
   const check = (await response.json())?.data
-  if (!check || check.revision !== workspace.revision || check.corePassed !== false
-      || typeof check.ruleVersion !== 'string' || !check.ruleVersion
-      || typeof check.checkedAt !== 'string' || !check.checkedAt
-      || !Array.isArray(check.checks) || !check.checks.every((item: RuleCheck) => isRuleCheck(item))
+  if (!check || check.revision !== workspace.revision || typeof check.corePassed !== 'boolean'
+      || check.ruleVersion !== 'f03-core-graphics-choice-v3'
+      || typeof check.catalogVersion !== 'string' || !/^[a-f0-9]{64}$/.test(check.catalogVersion)
+      || typeof check.checkedAt !== 'string' || !Number.isFinite(Date.parse(check.checkedAt))
+      || !Array.isArray(check.checks) || check.checks.length !== 9
+      || !check.checks.every((item: RuleCheck, index: number) => isRuleCheck(item)
+        && item.rule === ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C08', 'C09', 'C10'][index]
+        && (item.state !== 'NOT_APPLICABLE' || ['C06', 'C09'].includes(item.rule)
+          && !workspace.selections.some(selection => selection.category === 'GPU')))
       || !Array.isArray(check.missing) || !check.missing.every(isMissingPart)
-      || !Array.isArray(check.unexecutedRules)
-      || !check.unexecutedRules.every((item: { rule: string; reason: string }) => item
-        && typeof item.rule === 'string' && typeof item.reason === 'string')) {
+      || check.complete !== (check.missing.length === 0)
+      || check.complete && !workspace.integratedGraphicsCpuId && !workspace.selections.some(item => item.category === 'GPU')
+      || !Array.isArray(check.unexecutedRules) || check.unexecutedRules.length !== 0
+      || !Array.isArray(check.unexecutedExtensions) || check.unexecutedExtensions.length !== 6
+      || !check.unexecutedExtensions.every((item: { rule: string; reason: string }, index: number) => item
+        && item.rule === `E0${index + 1}` && typeof item.reason === 'string' && item.reason !== '')
+      || check.status !== (check.checks.some((item: RuleCheck) => item.state === 'FAIL') ? 'INCOMPATIBLE'
+        : !check.complete ? 'INCOMPLETE'
+        : check.checks.every((item: RuleCheck) => ['PASS', 'NOT_APPLICABLE'].includes(item.state)) ? 'CORE_PASSED' : 'UNVERIFIED')
+      || check.corePassed !== (check.status === 'CORE_PASSED')) {
     throw new Error('兼容检测数据异常，已保留当前选择，请重试。')
   }
   return check as Compatibility

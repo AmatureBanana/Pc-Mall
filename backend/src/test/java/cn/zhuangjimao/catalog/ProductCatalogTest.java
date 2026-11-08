@@ -68,6 +68,33 @@ class ProductCatalogTest {
         assertThat(parameter(detail, "stickCount").path("sourceUrl").asText()).endsWith("KF560C36BBEK2-32.pdf");
     }
 
+    @Test
+    void integratedGraphicsAreSourcedCpuParametersAndNeverStandaloneCatalogProducts() throws Exception {
+        JsonNode products = json.readTree(ProductBrowserTest.get(app, "/api/products").body()).path("data");
+        int integratedCpus = 0;
+        for (JsonNode product : products) {
+            assertThat(product.path("name").asText()).doesNotContain("UHD Graphics", "AMD Radeon Graphics");
+            if (!product.path("category").asText().equals("CPU")) continue;
+            JsonNode detail = json.readTree(ProductBrowserTest.get(app, "/api/products/" + product.path("id").asLong()).body()).path("data");
+            if (parameter(detail, "integratedGraphics").path("value").asBoolean()) {
+                integratedCpus++;
+                assertThat(parameter(detail, "igpuModel").path("value").asText()).isNotBlank();
+                assertThat(parameter(detail, product.path("brand").asText().equals("AMD") ? "igpuFrequency" : "igpuMaxFrequency").path("value").asDouble()).isPositive();
+                for (JsonNode field : detail.path("parameters")) {
+                    if (field.path("code").asText().startsWith("igpu")) {
+                        assertThat(field.path("sourceUrl").asText()).startsWith("https://");
+                        assertThat(field.path("note").asText()).isNotBlank();
+                    }
+                }
+            } else {
+                for (JsonNode field : detail.path("parameters")) {
+                    assertThat(field.path("code").asText()).doesNotStartWith("igpu");
+                }
+            }
+        }
+        assertThat(integratedCpus).isEqualTo(2);
+    }
+
     private static JsonNode parameter(JsonNode detail, String code) {
         for (JsonNode parameter : detail.path("parameters")) {
             if (parameter.path("code").asText().equals(code)) return parameter;

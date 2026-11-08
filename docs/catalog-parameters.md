@@ -24,8 +24,11 @@
 
 SSD 按十进制 GB，1 TB=1000 GB；原始 TB 数值另存，不混用 GiB/TiB。内存采用厂商标称 GB；功率用 W，长度用 mm，数据速率用 MT/s。板型将 mATX/M-ATX 统一为 Micro-ATX。主板 SSD 三个支持集合仅描述两个 M.2 插槽，且当前都是 PCIe/NVMe 的对应组合；不描述 SATA 端口，后续增加不同插槽组合时应逐插槽建模，不能将无关集合任意做笛卡尔积。主板视频输出仍需有效 CPU 核显，不能只因存在 HDMI 端口就判定核显路径成立。
 
-C01～C10 对应数据为：socket；generation/stickCount/memorySlots；supportedSockets；formFactor/supportedMotherboardFormFactors；SSD 规格/接口/协议；显卡安装接口；核显及视频输出集合；峰值与总板功耗估算/额定功率；显卡长度/机箱有效限长；散热器高度/机箱有效限高。AMD 峰值未知应由后续数据准备核验后补充，规则在此前应给 UNKNOWN；本任务不宣称任一整机已通过核心检查。
+当前 C01～C06、C08～C10 对应数据为：socket；generation/stickCount/memorySlots；supportedSockets；formFactor/supportedMotherboardFormFactors；SSD 规格/接口/协议；显卡安装接口；峰值与总板功耗估算/额定功率；显卡长度/机箱有效限长；散热器高度/机箱有效限高。AMD 峰值未知应由后续数据准备核验后补充，规则在此前应给 UNKNOWN；本任务不宣称任一整机已通过核心检查。
 
 以上为按型号逐项整理的事实数据和本项目原创描述，没有复制厂商图片、长篇文案、外部商品数据库或第三方业务代码。厂商资料保留其原有权利，仅以链接归因，不主张其为开放许可；未采用 pc-builder-parts 数据，因而不引入其 CC BY 4.0 数据包。原有 12 个品类图仍为项目原创 SVG。所有售价、库存仍是数据库中的 CNY 演示值。
 
 任务05新增统一分类参数校验与后台表单，详见[商品管理契约](catalog-administration.md)。V10把上述两款主板已核验的PCIe/NVMe M.2支持组合显式存入`ssdSlots`（华硕2242/2260/2280，微星2260/2280），数据版本`catalog-slots-v2`，核验日期保持2026-10-30；未增加新的硬件事实。后续F03-C05应使用有效组合而非将旧集合做任意笛卡尔积。V4原始迁移保持不变，已有AMD峰值未知值仍为null。
+
+
+2026-11-08 用户调整：C07 图形输出判断已移除。显卡栏仍必须选择核显或独显，`integratedGraphics` 用于服务端核验核显选择是否真实可用；igpu 字段用于 CPU 规格及 DIY 核显候选展示，不核验显示输出路径。

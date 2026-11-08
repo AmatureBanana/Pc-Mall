@@ -107,13 +107,13 @@ test('a late quotation cannot overwrite a replacement configuration', async ({ p
   await expect(configuration).not.toContainText('Intel Core i5-14600KF')
 })
 
-test('all eight sales units remain editable with honest pending compatibility and catalog details', async ({ page }) => {
+test('all eight sales units remain editable with complete core compatibility and catalog details', async ({ page }) => {
   await page.goto('/#diy')
   const categories = page.getByRole('navigation', { name: 'DIY 硬件分类' })
   const configuration = page.getByRole('region', { name: '当前配置' })
   const choices = [
     ['CPU', 'Intel Core i5-14600KF'], ['主板', '华硕 TUF B760M-PLUS WIFI'],
-    ['独立显卡', 'NVIDIA GeForce RTX 4070 SUPER'], ['内存', '金士顿 FURY Beast 32GB (16G×2)'],
+    ['显卡', 'NVIDIA GeForce RTX 4070 SUPER'], ['内存', '金士顿 FURY Beast 32GB (16G×2)'],
     ['SSD', '三星 990 PRO 1TB'], ['电源', '海盗船 RM750e 全模组电源'],
     ['机箱', '九州风神 CC560 中塔机箱'], ['独立散热器', '九州风神 AK400 风冷散热器'],
   ]
@@ -123,13 +123,13 @@ test('all eight sales units remain editable with honest pending compatibility an
     await expect(configuration.getByRole('link', { name, exact: true })).toBeVisible()
     if (category === '主板') {
       await configuration.getByRole('button', { name: '替换 CPU', exact: true }).click()
-      await page.screenshot({ path: '../docs/evidence/task-09-workspace.png', fullPage: true, animations: 'disabled' })
+      await page.screenshot({ path: '../docs/evidence/task-11-workspace.png', fullPage: true, animations: 'disabled' })
     }
   }
   await expect(configuration).toContainText('已选择 8 / 8 项')
   await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥10,552.00')
-  await expect(page.getByRole('region', { name: '兼容分项诊断' })).toContainText('分项已通过')
-  await expect(configuration).toContainText('当前不能确认整机兼容')
+  await expect(page.getByRole('region', { name: '兼容分项诊断' })).toContainText('核心检测通过')
+  await expect(configuration).not.toContainText('核心通过不代表可售、有库存或全面兼容')
   await configuration.getByRole('link', { name: '金士顿 FURY Beast 32GB (16G×2)', exact: true }).click()
   const detail = page.getByRole('dialog', { name: '商品详情' })
   await expect(detail.getByRole('row', { name: /实际内存条数/ })).toContainText('2 条')
