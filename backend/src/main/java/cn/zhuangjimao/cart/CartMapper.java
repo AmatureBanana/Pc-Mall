@@ -32,7 +32,7 @@ interface CartMapper {
     @Select("""
         SELECT i.id,i.product_id,i.quantity,
                p.sku,p.name,p.category,c.label AS category_label,p.brand,p.model,p.image_url,
-               p.price,p.stock,p.status
+               p.price,p.stock,p.status,p.revision
         FROM shopping_cart_item i
         JOIN products p ON p.id=i.product_id
         JOIN product_categories c ON c.code=p.category
@@ -69,13 +69,28 @@ interface CartMapper {
     @Insert("INSERT INTO cart_configuration_item(configuration_id,product_id,quantity) VALUES(#{configurationId},#{productId},#{quantity})")
     void insertConfigurationItem(long configurationId, long productId, int quantity);
 
+    @Select("SELECT id FROM cart_configuration WHERE cart_id=#{cartId} AND id=#{id} FOR UPDATE")
+    Long ownedConfiguration(long cartId, long id);
+
+    @Select("SELECT product_id FROM shopping_cart_item WHERE cart_id=#{cartId} FOR UPDATE")
+    List<Long> singleProductIds(long cartId);
+
+    @Select("SELECT i.product_id FROM cart_configuration_item i JOIN cart_configuration g ON g.id=i.configuration_id WHERE g.cart_id=#{cartId} FOR UPDATE")
+    List<Long> configurationProductIds(long cartId);
+
+    @Update("UPDATE cart_configuration SET signature=#{signature} WHERE id=#{id}")
+    void configurationSignature(long id, String signature);
+
+    @Update("DELETE FROM cart_configuration_item WHERE configuration_id=#{id}")
+    void deleteConfigurationItems(long id);
+
     @Update("DELETE FROM cart_configuration WHERE cart_id=#{cartId} AND id=#{configurationId}")
     int deleteConfiguration(long cartId, long configurationId);
 
     @Select("""
         SELECT g.id,p.id AS product_id,i.quantity,
                p.sku,p.name,p.category,c.label AS category_label,p.brand,p.model,p.image_url,
-               p.price,p.stock,p.status
+               p.price,p.stock,p.status,p.revision
         FROM cart_configuration g
         JOIN cart_configuration_item i ON i.configuration_id=g.id
         JOIN products p ON p.id=i.product_id
@@ -114,5 +129,5 @@ interface CartMapper {
     record RequestRow(String fingerprint, String creationToken, String result) {}
     record LineView(long id, long productId, int quantity, String sku, String name, String category,
                     String categoryLabel, String brand, String model, String imageUrl,
-                    BigDecimal price, int stock, String status) {}
+                    BigDecimal price, int stock, String status, long revision) {}
 }

@@ -65,6 +65,21 @@ class CartController {
     ResponseEntity<CartResponse> addConfiguration(@AuthenticationPrincipal AccountPrincipal principal, @RequestBody String body) {
         JsonNode input = configurationInput(body);
         requireFields(input, Set.of("selections", "integratedGraphicsCpuId", "memoryQuantity"));
+        var configuration = selections(input);
+        return answer(carts.addConfiguration(principal.ownerId(), configuration.parts(), configuration.graphics(), configuration.memoryQuantity()));
+    }
+
+    @PostMapping("/configurations/{id}")
+    ResponseEntity<CartResponse> replaceConfiguration(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable long id,
+                                                      @RequestBody String body) {
+        var input = configurationInput(body);
+        requireFields(input, Set.of("selections", "integratedGraphicsCpuId", "memoryQuantity", "revision", "editToken"));
+        var configuration = selections(input);
+        return answer(carts.replaceConfiguration(principal.ownerId(), id, revision(input), text(input, "editToken"),
+                configuration.parts(), configuration.graphics(), configuration.memoryQuantity()));
+    }
+
+    private static ConfigurationInput selections(JsonNode input) {
         var entries = input.get("selections");
         if (entries == null || !entries.isArray() || entries.size() < 7 || entries.size() > 8) {
             invalid("请选择完整的装机配置。");
@@ -87,8 +102,39 @@ class CartController {
         if (!DiyMemory.validQuantity(memoryQuantity, selections.containsKey(HardwareCategory.MEMORY))) {
             invalid("所选内存数量须为 1～4 根。");
         }
-        return answer(carts.addConfiguration(principal.ownerId(), selections, graphics, (int) memoryQuantity));
+        return new ConfigurationInput(selections, graphics, (int) memoryQuantity);
     }
+
+    private static long revision(JsonNode input) {
+        var value = input.get("revision");
+        if (value == null || !value.isIntegralNumber() || !value.canConvertToLong() || value.asLong() < 0) invalid("购物车修订无效。");
+        return value.asLong();
+    }
+
+    record ConfigurationInput(EnumMap<HardwareCategory, Long> parts, Long graphics, int memoryQuantity) {}
+
+    @PostMapping("/checkout-preview")
+    ResponseEntity<PreviewResponse> preview(@AuthenticationPrincipal AccountPrincipal principal, @RequestBody String body) {
+        var input = configurationInput(body);
+        requireFields(input, Set.of("revision", "itemIds", "configurationIds", "quoteToken"));
+        var preview = carts.preview(principal.ownerId(), revision(input), ids(input, "itemIds"), ids(input, "configurationIds"),
+                input.has("quoteToken") ? text(input, "quoteToken") : null);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new PreviewResponse(preview));
+    }
+
+    private static Set<Long> ids(JsonNode input, String key) {
+        var entries = input.get(key);
+        if (entries == null || !entries.isArray()) invalid("请选择单品和完整配置组。");
+        var ids = new java.util.HashSet<Long>();
+        for (var id : entries) {
+            if (!id.isIntegralNumber() || !id.canConvertToLong() || id.asLong() <= 0 || !ids.add(id.asLong())) {
+                invalid("购物项标识须为不重复的正整数，不允许组内部分选择。");
+            }
+        }
+        return Set.copyOf(ids);
+    }
+
+    record PreviewResponse(ShoppingCart.Preview data) {}
 
     @DeleteMapping("/configurations/{id}")
     ResponseEntity<CartResponse> removeConfiguration(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable long id) {

@@ -19,10 +19,18 @@ const sort = ref('default')
 const clearOpen = ref(false)
 const transferOpen = ref(false)
 const transferring = ref(false)
-const { addConfiguration, error: cartError } = useCart()
-const { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear,
+const { addConfiguration, error: cartError, editing, cancelEdit, replaceConfiguration } = useCart()
+const { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear, load,
   memoryQuantity, memorySlots, memoryLimit, setMemoryQuantity,
   quotation, compatibility, restoration, restore, dismissRestoration } = useDiyWorkspace()
+watch(workspace, value => { if (editing.value) editing.value.workspace = value }, { flush: 'sync' })
+watch(editing, (edit, previous) => {
+  transferOpen.value = false
+  if (edit) {
+    edit.previousWorkspace ??= workspace.value
+    load(edit.workspace)
+  } else if (previous?.previousWorkspace) load(previous.previousWorkspace)
+}, { immediate: true })
 const { data: quote, status: quoteStatus, error: quoteError, refresh: refreshQuote } = quotation
 const { data: check, status: checkStatus, error: checkError, refresh: refreshCheck } = compatibility
 const { data: products, status, error, refresh } = useCatalogRequest(
@@ -138,9 +146,10 @@ async function confirmTransfer() {
   if (memoryQuantity.value > memoryLimit.value) return
   transferring.value = true
   try {
-    if (await addConfiguration(workspace.value)) {
+    const replacing = Boolean(editing.value)
+    if (await (replacing ? replaceConfiguration(workspace.value) : addConfiguration(workspace.value))) {
       transferOpen.value = false
-      ElMessage.success('装机方案已加入购物车')
+      ElMessage.success(replacing ? '装机方案已整组替换' : '装机方案已加入购物车')
     }
   } finally { transferring.value = false }
 }
@@ -273,7 +282,8 @@ onMounted(() => { void refresh() })
             </section>
             <div class="diy-actions">
               <p class="diy-save-note" role="status">{{ storageWarning ? '配置尚未保存，当前页面仍可继续编辑。' : '方案保存在当前标签页，刷新后可继续编辑。' }}</p>
-              <div><ElButton :disabled="!count" aria-label="清空配置" @click="clearOpen = true"><HardwareIcon name="reset"/>重置配置</ElButton><ElButton type="primary" :disabled="!count" @click="openTransfer"><HardwareIcon name="layers"/>转入购物车</ElButton></div>
+              <div><ElButton v-if="editing" :disabled="transferring" @click="cancelEdit">取消整组编辑</ElButton><ElButton v-else :disabled="!count" aria-label="清空配置" @click="clearOpen = true"><HardwareIcon name="reset"/>重置配置</ElButton><ElButton type="primary" :disabled="!count || transferring" @click="openTransfer"><HardwareIcon name="layers"/>{{ editing ? '保存整组修改' : '转入购物车' }}</ElButton></div>
+              <p v-if="editing" class="diy-status-note">正在编辑购物车配置组。保存时重新验证；取消或失败保留原组。</p>
             </div>
           </div>
         </section>
@@ -325,9 +335,9 @@ onMounted(() => { void refresh() })
       </section>
     </div>
     <ElDialog v-model="clearOpen" title="清空当前配置？" width="420px" align-center :close-on-click-modal="false"><p>将移除本标签页的全部已选硬件。取消可继续编辑。</p><template #footer><ElButton @click="clearOpen = false">取消</ElButton><ElButton type="danger" @click="clearConfiguration">确认清空</ElButton></template></ElDialog>
-    <ElDialog v-model="transferOpen" title="转入购物车" width="min(720px, calc(100vw - 32px))" align-center
+    <ElDialog v-model="transferOpen" :title="editing ? '保存整组修改' : '转入购物车'" width="min(720px, calc(100vw - 32px))" align-center
       :close-on-click-modal="false" :show-close="!transferring" :close-on-press-escape="!transferring">
-      <p class="transfer-intro">{{ signedIn ? '请核对配件。确认后将整套方案加入购物车。' : '请先登录。登录后会返回当前方案，你可以再确认加入购物车。' }}</p>
+      <p class="transfer-intro">{{ editing ? '请核对配件。确认后原子替换原组；冲突或失败保留原组。' : signedIn ? '请核对配件。确认后将整套方案加入购物车。' : '请先登录。登录后会返回当前方案，你可以再确认加入购物车。' }}</p>
       <section class="transfer-preview" aria-label="待加入的装机方案">
         <strong>当前装机方案</strong><span> · {{ totalUnits }} 件配件</span>
         <ul><li v-for="selection in workspace.selections" :key="selection.category">
