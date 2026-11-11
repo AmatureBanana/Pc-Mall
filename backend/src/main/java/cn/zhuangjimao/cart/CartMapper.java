@@ -10,7 +10,8 @@ import java.util.List;
 
 /**
  * Cart persistence only. Every statement touches the cart tables; the product table is read for
- * current price, sale state and available stock and is never locked, reserved or decremented here.
+ * current price, sale state and available stock. Write validation shares product locks with
+ * administration; no cart operation reserves or decrements stock.
  */
 @Mapper
 interface CartMapper {
@@ -43,11 +44,11 @@ interface CartMapper {
     @Select("SELECT id,cart_id,product_id,quantity FROM shopping_cart_item WHERE cart_id=#{cartId} AND product_id=#{productId}")
     LineRow lineForProduct(long cartId, long productId);
 
-    @Select("SELECT id,cart_id,product_id,quantity FROM shopping_cart_item WHERE id=#{itemId}")
-    LineRow line(long itemId);
+    @Select("SELECT id,cart_id,product_id,quantity FROM shopping_cart_item WHERE cart_id=#{cartId} AND id=#{itemId} FOR UPDATE")
+    LineRow line(long cartId, long itemId);
 
-    /** Current catalog data the write path validates against. No product row is locked or changed. */
-    @Select("SELECT id,sku,status,stock,price,category FROM products WHERE id=#{productId}")
+    /** Hold current catalog data stable until the cart transaction commits, without reserving stock. */
+    @Select("SELECT id,sku,status,stock,price,category FROM products WHERE id=#{productId} FOR SHARE")
     StockRow product(long productId);
 
     @Insert("INSERT INTO shopping_cart_item(cart_id,product_id,quantity) VALUES(#{cartId},#{productId},#{quantity})")

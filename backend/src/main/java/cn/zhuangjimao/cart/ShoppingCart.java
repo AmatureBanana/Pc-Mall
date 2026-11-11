@@ -157,16 +157,20 @@ public class ShoppingCart {
         if (memoryQuantity > 1) signature += ":" + memoryQuantity;
         cart.ensureCart(accountId);
         var header = cart.lockCart(accountId);
-        if (cart.configurationId(header.id(), signature) != null) return render(header, cart.lines(header.id()));
+        // Lock all referenced products in the inventory lock order before any snapshot read.
+        // Catalog writes lock the product before changing its parameters, price or availability.
+        var products = new HashMap<Long, CartMapper.StockRow>();
+        selections.values().stream().distinct().sorted().forEach(id -> products.put(id, cart.product(id)));
+        Long existing = cart.configurationId(header.id(), signature);
         for (var entry : selections.entrySet()) {
             long productId = entry.getValue();
-            var product = cart.product(productId);
+            var product = products.get(productId);
             if (product == null || !product.category().equals(entry.getKey().name())) {
                 invalid("配置中有不存在或类别不符的商品，请重新选择。");
             }
             var single = cart.lineForProduct(header.id(), productId);
             int quantity = entry.getKey() == HardwareCategory.MEMORY ? memoryQuantity : 1;
-            long demand = quantity + (single == null ? 0 : single.quantity())
+            long demand = (existing == null ? quantity : 0) + (single == null ? 0 : single.quantity())
                     + cart.configurationQuantity(header.id(), productId);
             if (!product.status().equals("ON_SALE") || demand > product.stock()) {
                 throw new CartException(HttpStatus.CONFLICT, "CART_STOCK_LIMIT",
@@ -177,6 +181,7 @@ public class ShoppingCart {
             throw new CartException(HttpStatus.CONFLICT, "CONFIGURATION_NOT_COMPATIBLE",
                     "配置未通过核心兼容性检测，请检查配件后重试。");
         }
+        if (existing != null) return render(header, cart.lines(header.id()));
         cart.insertConfiguration(header.id(), signature);
         long id = cart.configurationId(header.id(), signature);
         selections.forEach((category, productId) ->
@@ -203,7 +208,7 @@ public class ShoppingCart {
 
     private CartMapper.LineRow ownedLine(CartMapper.CartRow header, long itemId) {
         if (itemId <= 0) invalid("购物项 ID 必须是正整数。");
-        var line = cart.line(itemId);
+        var line = cart.line(header.id(), itemId);
         // Another owner's line answers as absent; ownership is never confirmed to a stranger.
         if (line == null || line.cartId() != header.id()) {
             throw new CartException(HttpStatus.NOT_FOUND, "CART_ITEM_NOT_FOUND", "购物项不存在，请刷新购物车后重试。");

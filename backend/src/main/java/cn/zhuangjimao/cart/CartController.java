@@ -3,7 +3,10 @@ package cn.zhuangjimao.cart;
 import cn.zhuangjimao.auth.AccountPrincipal;
 import cn.zhuangjimao.catalog.DiyMemory;
 import cn.zhuangjimao.catalog.HardwareCategory;
+import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +30,8 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/cart")
 class CartController {
+    private static final ObjectMapper STRICT = JsonMapper.builder()
+            .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build();
     private final ShoppingCart carts;
 
     CartController(ShoppingCart carts) { this.carts = carts; }
@@ -57,7 +62,8 @@ class CartController {
     }
 
     @PostMapping("/configurations")
-    ResponseEntity<CartResponse> addConfiguration(@AuthenticationPrincipal AccountPrincipal principal, @RequestBody JsonNode input) {
+    ResponseEntity<CartResponse> addConfiguration(@AuthenticationPrincipal AccountPrincipal principal, @RequestBody String body) {
+        JsonNode input = configurationInput(body);
         requireFields(input, Set.of("selections", "integratedGraphicsCpuId", "memoryQuantity"));
         var entries = input.get("selections");
         if (entries == null || !entries.isArray() || entries.size() < 7 || entries.size() > 8) {
@@ -91,6 +97,18 @@ class CartController {
 
     private static ResponseEntity<CartResponse> answer(ShoppingCart.CartView view) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new CartResponse(view));
+    }
+
+    /** Do not silently collapse duplicate selections or fields before validating the configuration. */
+    private static JsonNode configurationInput(String body) {
+        try (var parser = STRICT.createParser(body)) {
+            JsonNode input = STRICT.readTree(parser);
+            if (parser.nextToken() == null) return input;
+        } catch (java.io.IOException exception) {
+            invalid("配置 JSON 格式无效或包含重复字段。");
+        }
+        invalid("请只提交一个配置对象。");
+        return null;
     }
 
     /** Rejects both unknown fields and client-claimed ownership before the service sees anything. */

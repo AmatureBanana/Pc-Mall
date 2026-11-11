@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { request, write, AuthError } from './auth'
-import type { Workspace } from './diy'
+import { hardwareCategories, maxDiyMemoryQuantity, type Workspace } from './diy'
 
 export type CartState = 'VALID' | 'OFF_SALE' | 'OUT_OF_STOCK' | 'INSUFFICIENT_STOCK'
 export interface CartItem {
@@ -34,14 +34,26 @@ function isItem(value: unknown): value is CartItem {
     && cartStates.includes(item.state as CartState)
 }
 
+function isConfiguration(value: unknown): value is Cart['configurations'][number] {
+  if (!value || typeof value !== 'object') return false
+  const group = value as Record<string, unknown>
+  if (!Number.isSafeInteger(group.id) || Number(group.id) <= 0 || !Array.isArray(group.items)
+      || group.items.length < 7 || group.items.length > 8 || !group.items.every(isItem)
+      || !isMoney(group.amount) || typeof group.valid !== 'boolean') return false
+  const categories = new Set(group.items.map(item => item.category))
+  return categories.size === group.items.length
+    && new Set(group.items.map(item => item.productId)).size === group.items.length
+    && hardwareCategories.every(({ code }) => code === 'GPU' || categories.has(code))
+    && group.items.every(item => hardwareCategories.some(({ code }) => code === item.category)
+      && (item.category === 'MEMORY' ? item.quantity <= maxDiyMemoryQuantity : item.quantity === 1))
+}
+
 function isCart(value: unknown): value is Cart {
   if (!value || typeof value !== 'object') return false
   const cart = value as Record<string, unknown>
   return Number.isSafeInteger(cart.revision) && Number(cart.revision) >= 0
     && Array.isArray(cart.items) && cart.items.every(isItem)
-    && Array.isArray(cart.configurations) && cart.configurations.every(group => group
-      && Number.isSafeInteger(group.id) && group.id > 0 && Array.isArray(group.items)
-      && group.items.every(isItem) && isMoney(group.amount) && typeof group.valid === 'boolean')
+    && Array.isArray(cart.configurations) && cart.configurations.every(isConfiguration)
     && isMoney(cart.total) && isMoney(cart.validTotal)
     && Number.isSafeInteger(cart.validCount) && Number.isSafeInteger(cart.lineCount)
 }
@@ -235,7 +247,12 @@ async function addConfiguration(workspace: Workspace): Promise<boolean> {
     if (!current(request)) return false
     success(request, value, '装机方案已加入购物车。')
     return true
-  } catch (cause) { failure(request, cause, '方案未能加入购物车，请重试。'); return false }
+  } catch (cause) {
+    const feedback = cause instanceof AuthError ? cause
+      : new Error('方案入车结果暂未确认，请重试或打开购物车核对。')
+    failure(request, feedback, '方案未能加入购物车，请重试。')
+    return false
+  }
 }
 
 async function removeConfiguration(id: number): Promise<boolean> {
