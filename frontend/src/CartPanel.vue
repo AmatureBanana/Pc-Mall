@@ -219,6 +219,7 @@ async function removeRows(all: boolean) {
               <img v-if="groupImage(group.items)" :src="groupImage(group.items)" alt="" @error="imageFallback"/>
               <ul class="cart-parts"><li v-for="item in group.items" :key="item.productId">
                 <HardwareIcon :name="icon(item)"/><div><b>{{ item.categoryLabel }}：</b>{{ item.name }}
+                  <small class="cart-meta cart-sku">{{ item.sku }} · 单价 ¥{{ formatPrice(item.price) }}</small>
                   <small v-if="item.state !== 'VALID'" class="cart-problem">{{ item.message }}</small>
                 </div><span>×{{ item.quantity }}</span>
               </li></ul>
@@ -278,6 +279,7 @@ async function removeRows(all: boolean) {
 .cart-name { font-weight: 700; overflow-wrap: anywhere; }
 .cart-name:hover { color: var(--blue); }
 .cart-meta { display: block; color: #63718a; line-height: 1.7; margin-top: 4px; }
+.cart-sku { overflow-wrap: anywhere; }
 .cart-meta span, .cart-source { display: inline-block; border-radius: 5px; padding: 1px 6px; color: #2465e7; background: #e5efff; }
 .cart-problem { display: block; color: #9c5d16; font-size: 12px; margin-top: 4px; }
 .cart-stock { color: #25823f; white-space: nowrap; }
