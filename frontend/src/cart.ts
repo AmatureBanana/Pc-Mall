@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { request, write, AuthError } from './auth'
-import { hardwareCategories, maxDiyMemoryQuantity, type Workspace } from './diy'
+import { hardwareCategories, maxDiyMemoryQuantity, saveWorkspace, type HardwareCategory, type Workspace } from './diy'
 
 export type CartState = 'VALID' | 'OFF_SALE' | 'OUT_OF_STOCK' | 'INSUFFICIENT_STOCK'
 export interface CartItem {
@@ -11,9 +11,14 @@ export interface CartItem {
 export interface Cart {
   revision: number; items: CartItem[]; total: string; validTotal: string
   validCount: number; lineCount: number
-  configurations: { id: number; items: CartItem[]; amount: string; valid: boolean }[]
+  configurations: { id: number; items: CartItem[]; amount: string; valid: boolean; editToken: string; state: string; reasons: string[] }[]
 }
 export const cartStates: CartState[] = ['VALID', 'OFF_SALE', 'OUT_OF_STOCK', 'INSUFFICIENT_STOCK']
+export interface CheckoutPreview {
+  revision: number; status: 'CONFIRMATION_REQUIRED' | 'RECONFIRMATION_REQUIRED' | 'READY'; quoteToken: string
+  items: CartItem[]; configurations: Cart['configurations']; total: string
+  skuDemand: { productId: number; quantity: number }[]
+}
 /**
  * The per-line cart quantity bound, mirroring the server rule and the V19 check constraint.
  * It bounds a single-item line, independently of aggregate stock demand.
@@ -39,7 +44,10 @@ function isConfiguration(value: unknown): value is Cart['configurations'][number
   const group = value as Record<string, unknown>
   if (!Number.isSafeInteger(group.id) || Number(group.id) <= 0 || !Array.isArray(group.items)
       || group.items.length < 7 || group.items.length > 8 || !group.items.every(isItem)
-      || !isMoney(group.amount) || typeof group.valid !== 'boolean') return false
+      || !isMoney(group.amount) || typeof group.valid !== 'boolean'
+      || typeof group.editToken !== 'string' || !/^[a-f0-9]{64}$/.test(group.editToken)
+      || ![...cartStates, 'INCOMPATIBLE', 'UNVERIFIED'].includes(group.state as CartState)
+      || !Array.isArray(group.reasons) || !group.reasons.every(reason => typeof reason === 'string')) return false
   const categories = new Set(group.items.map(item => item.category))
   return categories.size === group.items.length
     && new Set(group.items.map(item => item.productId)).size === group.items.length
@@ -94,6 +102,7 @@ const cart = ref<Cart | null>(null)
 const loading = ref(false)
 const error = ref('')
 const notice = ref('')
+const editing = ref<{ id: number; revision: number; editToken: string; workspace: Workspace; previousWorkspace?: Workspace } | null>(null)
 type Scope = { identity: number; order: number; signal: AbortSignal }
 type AddAttempt = { key: string; inflight: Promise<boolean> | null }
 let identity = 0
@@ -114,6 +123,7 @@ function clear() {
   controller = new AbortController()
   inflight = null
   uncertainAdds.clear()
+  finishEdit()
   acceptedOrder = latestAction = 0
   cart.value = null
   loading.value = false
@@ -265,10 +275,73 @@ async function removeConfiguration(id: number): Promise<boolean> {
   } catch (cause) { failure(request, cause, '方案移除失败，请重试。'); return false }
 }
 
+function startEdit(group: Cart['configurations'][number]) {
+  if (!cart.value) return
+  const cpu = group.items.find(item => item.category === 'CPU')!
+  editing.value = { id: group.id, revision: cart.value.revision, editToken: group.editToken,
+    previousWorkspace: editing.value?.previousWorkspace,
+    workspace: { version: 1, revision: 0, selections: group.items.map(item =>
+      ({ category: item.category as HardwareCategory, productId: item.productId, source: 'DIY' })),
+    memoryQuantity: group.items.find(item => item.category === 'MEMORY')!.quantity,
+    ...(!group.items.some(item => item.category === 'GPU') ? { integratedGraphicsCpuId: cpu.productId } : {}) } }
+  window.location.hash = 'diy'
+}
+
+async function replaceConfiguration(workspace: Workspace): Promise<boolean> {
+  const edit = editing.value
+  if (!edit) return false
+  const request = beginAction()
+  try {
+    const value = parse(await write(`/api/cart/configurations/${edit.id}`, {
+      selections: workspace.selections.map(({ category, productId }) => ({ category, productId })),
+      integratedGraphicsCpuId: workspace.integratedGraphicsCpuId, memoryQuantity: workspace.memoryQuantity,
+      revision: edit.revision, editToken: edit.editToken,
+    }, 'POST', request.signal))
+    if (!current(request)) return false
+    success(request, value, '装机方案已整组替换。')
+    finishEdit()
+    window.location.hash = 'cart'
+    return true
+  } catch (cause) {
+    failure(request, cause instanceof AuthError ? cause : new Error('整组修改结果暂未确认，请打开购物车核对后重新编辑。'), '整组修改失败，原组已保留。')
+    return false
+  }
+}
+
+function finishEdit() {
+  if (editing.value?.previousWorkspace) saveWorkspace(editing.value.previousWorkspace)
+  editing.value = null
+}
+
+function cancelEdit() { finishEdit(); window.location.hash = 'cart' }
+
+async function checkoutPreview(itemIds: number[], configurationIds: number[], quoteToken?: string): Promise<CheckoutPreview | null> {
+  if (!cart.value) return null
+  const revision = cart.value.revision
+  const request = beginAction()
+  try {
+    const value = await write('/api/cart/checkout-preview', { revision, itemIds, configurationIds, quoteToken }, 'POST', request.signal) as CheckoutPreview
+    if (!current(request)) return null
+    const sameIds = (rows: { id: number }[], ids: number[]) => rows.length === ids.length
+      && new Set(rows.map(row => row.id)).size === ids.length && rows.every(row => ids.includes(row.id))
+    if (!value || value.revision !== revision || !['CONFIRMATION_REQUIRED', 'RECONFIRMATION_REQUIRED', 'READY'].includes(value.status)
+      || typeof value.quoteToken !== 'string' || !/^[a-f0-9]{64}$/.test(value.quoteToken)
+      || !isMoney(value.total) || !Array.isArray(value.items) || !value.items.every(isItem)
+      || !Array.isArray(value.configurations) || !value.configurations.every(isConfiguration)
+      || !sameIds(value.items, itemIds) || !sameIds(value.configurations, configurationIds)
+      || !Array.isArray(value.skuDemand) || !value.skuDemand.every(row => row && Number.isSafeInteger(row.productId)
+        && row.productId > 0 && Number.isSafeInteger(row.quantity) && row.quantity > 0)) {
+      throw new Error('预结算数据格式异常，尚未确认报价，请重试。')
+    }
+    return value
+  } catch (cause) { failure(request, cause, '预结算失败，请重新核验。'); return null }
+}
+
 const count = computed(() => cart.value
   ? cart.value.items.reduce((sum, item) => sum + item.quantity, cart.value.configurations.length) : 0)
 
 export function useCart() {
   const refresh = () => refreshCart()
-  return { cart, loading, error, notice, count, refresh, clear, add, update, remove, addConfiguration, removeConfiguration }
+  return { cart, loading, error, notice, count, refresh, clear, add, update, remove, addConfiguration, removeConfiguration,
+    editing, startEdit, cancelEdit, replaceConfiguration, checkoutPreview }
 }

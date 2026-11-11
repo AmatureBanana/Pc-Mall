@@ -2,7 +2,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Product } from './catalog'
 import {
   describeRestoration, loadCompatibility, loadQuote, maxDiyMemoryQuantity, readSeen, rememberSeen, restoreWorkspace, saveWorkspace,
-  type HardwareCategory, type Restoration, type Selection,
+  type HardwareCategory, type Restoration, type Selection, type Workspace,
 } from './diy'
 import { useCatalogRequest } from './useCatalogRequest'
 import { workspaceActive, restorationPending, seenBaseline } from './workspaceSession'
@@ -64,6 +64,9 @@ export function useDiyWorkspace() {
     change(workspace.value.selections.filter(item => item.category !== 'GPU'), cpuId)
   }
   function clear() { if (count.value) change([]) }
+  function load(workspace: Workspace) {
+    change(workspace.selections.map(item => ({ ...item })), workspace.integratedGraphicsCpuId ?? 0, workspace.memoryQuantity ?? 1)
+  }
   // The active restoration already performs both authoritative reads. Background events must not
   // abort its requests; edits still refresh immediately and supersede the old restoration.
   const revalidate = () => {
@@ -136,7 +139,7 @@ export function useDiyWorkspace() {
     document.removeEventListener('visibilitychange', onVisible)
     window.clearInterval(refreshTimer)
   })
-  return { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear,
+  return { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear, load,
     memoryQuantity, memorySlots, memoryLimit, setMemoryQuantity,
     quotation, compatibility, restoration, restore, dismissRestoration }
 }

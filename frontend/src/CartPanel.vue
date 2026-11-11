@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ElButton, ElEmpty, ElMessageBox, ElSkeleton } from 'element-plus'
+import { ElButton, ElDialog, ElEmpty, ElMessageBox, ElSkeleton } from 'element-plus'
 import { categories, formatPrice, imageFallback } from './catalog'
 import HardwareIcon from './HardwareIcon.vue'
-import { cartQuantity, useCart, type CartItem } from './cart'
+import { cartQuantity, useCart, type CartItem, type CheckoutPreview } from './cart'
 
 const emit = defineEmits<{ close: [] }>()
-const { cart, loading, error, notice, refresh, update, remove, removeConfiguration } = useCart()
+const { cart, loading, error, notice, refresh, update, remove, removeConfiguration, startEdit, checkoutPreview } = useCart()
 const busy = ref(new Set<number>())
 const removingConfiguration = ref<number | null>(null)
 const pending = ref<Record<number, string>>({})
 const selected = ref(new Set<string>())
 const collapsed = ref(new Set<number>())
 const bulkRemoving = ref(false)
+const quote = ref<CheckoutPreview | null>(null)
+const quoteOpen = ref(false)
+const quoteBusy = ref(false)
+const priceChanges = ref<string[]>([])
+let quoteAttempt = 0
 const itemKey = (id: number) => `item:${id}`
 const groupKey = (id: number) => `group:${id}`
 
@@ -63,6 +68,35 @@ function choose(keys: string[], event: Event) {
   const checked = (event.target as HTMLInputElement).checked
   keys.forEach(key => checked ? selected.value.add(key) : selected.value.delete(key))
 }
+watch([cart, () => [...selected.value].sort().join(',')], () => {
+  quoteAttempt++
+  quote.value = null
+  quoteOpen.value = false
+  quoteBusy.value = false
+})
+onUnmounted(() => { quoteAttempt++ })
+
+async function checkQuote(confirm = false) {
+  if (quoteBusy.value || !cart.value) return
+  const attempt = ++quoteAttempt
+  const previous = confirm ? quote.value : null
+  const before = previous ?? cart.value
+  const seen = new Map([...before.items, ...before.configurations.flatMap(group => group.items)].map(item => [item.productId, item.price]))
+  if (quote.value) quote.value = { ...quote.value, status: 'CONFIRMATION_REQUIRED' }
+  quoteOpen.value = true
+  quoteBusy.value = true
+  try {
+    const result = await checkoutPreview(items.value.filter(item => selected.value.has(itemKey(item.id))).map(item => item.id),
+      groups.value.filter(group => selected.value.has(groupKey(group.id))).map(group => group.id), previous?.quoteToken)
+    if (attempt !== quoteAttempt || !quoteOpen.value) return
+    if (!result) { quote.value = null; return }
+    priceChanges.value = [...new Map([...result.items, ...result.configurations.flatMap(group => group.items)]
+      .filter(item => seen.has(item.productId) && seen.get(item.productId) !== item.price)
+      .map(item => [item.productId, `${item.name}：¥${seen.get(item.productId)} → ¥${item.price}`])).values()]
+    quote.value = result
+  } finally { if (attempt === quoteAttempt) quoteBusy.value = false }
+}
+function closeQuote() { quoteAttempt++; quoteOpen.value = false; quote.value = null; quoteBusy.value = false }
 function toggleGroup(id: number) {
   if (collapsed.value.has(id)) collapsed.value.delete(id)
   else collapsed.value.add(id)
@@ -223,10 +257,12 @@ async function removeRows(all: boolean) {
                   <small v-if="item.state !== 'VALID'" class="cart-problem">{{ item.message }}</small>
                 </div><span>×{{ item.quantity }}</span>
               </li></ul>
+              <div><ElButton size="small" :disabled="operationBusy" @click="startEdit(group)">返回 DIY 编辑</ElButton>
               <ElButton size="small" :disabled="bulkRemoving || removingConfiguration !== null" @click="dropConfiguration(group.id)">
                 <HardwareIcon name="trash"/>移除整套
-              </ElButton>
+              </ElButton></div>
             </div>
+            <ul v-if="group.reasons?.length" class="cart-problem"><li v-for="reason in group.reasons" :key="reason">{{ reason }}</li></ul>
           </section>
           <p v-if="groups.length" class="cart-hint"><HardwareIcon name="alert"/>配置组是一套完整装机方案，组内配件不能在购物车中单独修改或删除。</p>
         </template>
@@ -239,11 +275,30 @@ async function removeRows(all: boolean) {
           <div class="cart-summary-total"><dt>选中参考合计</dt><dd aria-label="选中参考合计">{{ money(itemTotal + groupTotal) }}</dd></div>
         </dl>
         <p v-if="invalidSelected" class="cart-problem">{{ invalidSelected }} 项当前不可售，未计入合计。</p>
-        <ElButton class="cart-checkout" type="primary" disabled><HardwareIcon name="card"/>去结算</ElButton>
-        <p class="cart-summary-note">结算暂未开放。参考金额不锁价、不预占库存。</p>
+        <ElButton class="cart-checkout" type="primary" :disabled="!selected.size || loading || operationBusy || quoteBusy" @click="checkQuote()"><HardwareIcon name="card"/>预结算</ElButton>
+        <p class="cart-summary-note">按选中项重新核验库存和整组兼容性。参考金额不锁价、不预占库存。</p>
         <button type="button" class="cart-text-button" :disabled="loading || operationBusy" @click="refresh">刷新价格与库存</button>
       </aside>
     </div>
+    <ElDialog v-model="quoteOpen" title="确认当前报价" width="min(720px, calc(100vw - 32px))" align-center
+      :close-on-click-modal="false" @close="closeQuote">
+      <p v-if="error" role="alert" class="auth-error">{{ error }}</p>
+      <p v-if="quoteBusy" role="status">正在重新核验选中项…</p>
+      <template v-if="quote">
+        <p v-if="quote.status === 'RECONFIRMATION_REQUIRED'" role="alert" class="auth-error">报价或商品信息发生变化，请核对最新明细并再次确认。</p>
+        <ul v-if="priceChanges.length" class="cart-problem" aria-label="价格变化"><li v-for="change in priceChanges" :key="change">{{ change }}</li></ul>
+        <section aria-label="服务端选中明细">
+          <p v-for="item in quote.items" :key="item.id">{{ item.name }} · {{ item.sku }} ×{{ item.quantity }} · ¥{{ formatPrice(item.price) }} · 小计 ¥{{ formatPrice(item.amount) }}</p>
+          <div v-for="group in quote.configurations" :key="group.id"><h3>完整配置组 #{{ group.id }} · ¥{{ formatPrice(group.amount) }}</h3>
+            <p v-for="item in group.items" :key="item.productId">{{ item.categoryLabel }}：{{ item.name }} · {{ item.sku }} ×{{ item.quantity }} · ¥{{ formatPrice(item.price) }}</p>
+          </div>
+        </section>
+        <p>服务端选中总额：<strong aria-label="服务端选中总额" class="cart-price">¥{{ formatPrice(quote.total) }}</strong></p>
+        <p v-if="quote.status === 'READY'" role="status" class="auth-success">预检查通过，当前报价已确认。创建订单时仍须重新核验。</p>
+      </template>
+      <p class="cart-summary-note">本次只检查选中单品和完整组，不创建订单、不预占库存。确认报价不锁价，价格再次变化须重新确认。</p>
+      <template #footer><ElButton @click="closeQuote">返回购物车</ElButton><ElButton type="primary" :loading="quoteBusy" :disabled="!quote || quoteBusy" @click="checkQuote(true)">确认并重新核验报价</ElButton></template>
+    </ElDialog>
   </main>
 </template>
 

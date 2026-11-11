@@ -2,6 +2,7 @@ package cn.zhuangjimao.cart;
 
 import cn.zhuangjimao.catalog.HardwareCategory;
 import cn.zhuangjimao.compatibility.CompatibilityService;
+import cn.zhuangjimao.compatibility.RuleState;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -22,6 +23,8 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -200,6 +203,114 @@ public class ShoppingCart {
         return render(new CartMapper.CartRow(header.id(), header.revision() + 1), cart.lines(header.id()));
     }
 
+    /** A stale editor cannot replace a newer cart, even when its proposed parts remain valid. */
+    @Transactional
+    public CartView replaceConfiguration(long accountId, long id, long revision, String editToken,
+            Map<HardwareCategory, Long> selections, Long graphics, int memoryQuantity) {
+        var header = ownedHeader(accountId);
+        if (cart.ownedConfiguration(header.id(), id) == null) {
+            throw new CartException(HttpStatus.NOT_FOUND, "CART_ITEM_NOT_FOUND", "配置组不存在。");
+        }
+        if (header.revision() != revision) changeConflict();
+        lockProducts(header.id(), selections.values());
+        var rows = cart.configurationLines(header.id());
+        if (!editToken.equals(editToken(rows.stream().filter(row -> row.id() == id).toList()))) changeConflict();
+        boolean discrete = selections.containsKey(HardwareCategory.GPU);
+        if (discrete ? graphics != null : graphics == null || !graphics.equals(selections.get(HardwareCategory.CPU))) {
+            invalid("请选择独立显卡或当前 CPU 的核显。");
+        }
+        String signature = Arrays.stream(HardwareCategory.values())
+                .map(category -> Long.toString(selections.getOrDefault(category, 0L))).collect(Collectors.joining(","));
+        if (memoryQuantity > 1) signature += ":" + memoryQuantity;
+        Long duplicate = cart.configurationId(header.id(), signature);
+        if (duplicate != null && duplicate != id) {
+            throw new CartException(HttpStatus.CONFLICT, "CONFIGURATION_DUPLICATE", "购物车已有相同配置，原组已保留。");
+        }
+        var demand = new HashMap<Long, Long>();
+        cart.lines(header.id()).forEach(row -> demand.merge(row.productId(), (long) row.quantity(), Long::sum));
+        rows.stream().filter(row -> row.id() != id).forEach(row -> demand.merge(row.productId(), (long) row.quantity(), Long::sum));
+        for (var entry : selections.entrySet()) {
+            var product = cart.product(entry.getValue());
+            if (product == null || !product.category().equals(entry.getKey().name())) invalid("配置商品不存在或类别不符。");
+            long quantity = entry.getKey() == HardwareCategory.MEMORY ? memoryQuantity : 1;
+            if (!product.status().equals("ON_SALE") || quantity + demand.getOrDefault(product.id(), 0L) > product.stock()) {
+                throw new CartException(HttpStatus.CONFLICT, "CART_STOCK_LIMIT", "当前不可售或库存不足，原组已保留。");
+            }
+        }
+        if (!compatibility.check(0, selections, graphics, memoryQuantity).corePassed()) {
+            throw new CartException(HttpStatus.CONFLICT, "CONFIGURATION_NOT_COMPATIBLE", "配置未通过核心兼容性检测，原组已保留。");
+        }
+        cart.configurationSignature(id, signature);
+        cart.deleteConfigurationItems(id);
+        selections.forEach((category, productId) -> cart.insertConfigurationItem(id, productId,
+                category == HardwareCategory.MEMORY ? memoryQuantity : 1));
+        if (cart.bumpRevision(header.id()) != 1) changeConflict();
+        return render(new CartMapper.CartRow(header.id(), revision + 1), cart.lines(header.id()));
+    }
+
+    /** Take current reads before establishing the catalog snapshot; all writers use this lock order. */
+    private void lockProducts(long cartId, java.util.Collection<Long> additional) {
+        var ids = new TreeSet<>(additional);
+        ids.addAll(cart.singleProductIds(cartId));
+        ids.addAll(cart.configurationProductIds(cartId));
+        ids.forEach(cart::product);
+    }
+
+    private String editToken(List<CartMapper.LineView> rows) {
+        return digest(rows.toString() + diagnosis(rows).version());
+    }
+
+    private Diagnosis diagnosis(List<CartMapper.LineView> rows) {
+        var selections = new java.util.EnumMap<HardwareCategory, Long>(HardwareCategory.class);
+        rows.forEach(row -> selections.put(HardwareCategory.valueOf(row.category()), row.productId()));
+        int memoryQuantity = rows.stream().filter(row -> row.category().equals("MEMORY"))
+                .mapToInt(CartMapper.LineView::quantity).findFirst().orElse(1);
+        try {
+            var result = compatibility.check(0, selections, selections.containsKey(HardwareCategory.GPU)
+                    ? null : selections.get(HardwareCategory.CPU), memoryQuantity);
+            var reasons = new ArrayList<String>();
+            result.missing().forEach(part -> reasons.add(part.message()));
+            result.checks().stream().filter(rule -> rule.state() == RuleState.FAIL || rule.state() == RuleState.UNKNOWN)
+                    .forEach(rule -> reasons.add(rule.rule() + "：" + rule.message()));
+            return new Diagnosis(result.corePassed() ? "VALID" : result.status().name().equals("INCOMPATIBLE")
+                    ? "INCOMPATIBLE" : "UNVERIFIED", List.copyOf(reasons), result.catalogVersion());
+        } catch (IllegalStateException exception) {
+            return new Diagnosis("UNVERIFIED", List.of("当前参数无法验证，请稍后重试。"), "UNVERIFIED");
+        }
+    }
+
+    private record Diagnosis(String state, List<String> reasons, String version) {}
+
+    /** A read-only quotation of server-owned whole cart entries, never an inventory hold. */
+    @Transactional
+    public Preview preview(long accountId, long revision, Set<Long> itemIds, Set<Long> configurationIds, String quoteToken) {
+        if (itemIds.isEmpty() && configurationIds.isEmpty()) invalid("请至少选择一个单品或完整配置组。");
+        var header = ownedHeader(accountId);
+        if (header.revision() != revision) changeConflict();
+        lockProducts(header.id(), List.of());
+        var rows = cart.lines(header.id()).stream().filter(row -> itemIds.contains(row.id())).toList();
+        var groups = cart.configurationLines(header.id()).stream().filter(row -> configurationIds.contains(row.id())).toList();
+        if (rows.size() != itemIds.size() || groups.stream().map(CartMapper.LineView::id).distinct().count() != configurationIds.size()) {
+            throw new CartException(HttpStatus.NOT_FOUND, "CART_ITEM_NOT_FOUND", "选中的购物项或完整组不存在，请刷新购物车。");
+        }
+        var selected = render(header, rows, groups);
+        if (selected.validCount() != selected.lineCount()) {
+            throw new CartException(HttpStatus.CONFLICT, "CART_SELECTION_INVALID", "选中项缺货、下架、不兼容或无法验证，请刷新诊断并调整选择。");
+        }
+        String token = digest(accountId + ":" + selected + ":" + rows);
+        var demand = new java.util.TreeMap<Long, Long>();
+        rows.forEach(row -> demand.merge(row.productId(), (long) row.quantity(), Long::sum));
+        groups.forEach(row -> demand.merge(row.productId(), (long) row.quantity(), Long::sum));
+        String status = quoteToken == null ? "CONFIRMATION_REQUIRED" : quoteToken.equals(token) ? "READY" : "RECONFIRMATION_REQUIRED";
+        return new Preview(revision, status, token, selected.items(), selected.configurations(), selected.total(),
+                demand.entrySet().stream().map(entry -> new SkuDemand(entry.getKey(), entry.getValue())).toList());
+    }
+
+    private static String digest(String value) {
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
+        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+    }
+
     private CartMapper.CartRow ownedHeader(long accountId) {
         var header = cart.lockCart(accountId);
         if (header == null) throw new CartException(HttpStatus.NOT_FOUND, "CART_ITEM_NOT_FOUND", "购物项不存在，请刷新购物车后重试。");
@@ -247,8 +358,11 @@ public class ShoppingCart {
     }
 
     private CartView render(CartMapper.CartRow header, List<CartMapper.LineView> rows) {
+        return render(header, rows, cart.configurationLines(header.id()));
+    }
+
+    private CartView render(CartMapper.CartRow header, List<CartMapper.LineView> rows, List<CartMapper.LineView> groupRows) {
         var items = new ArrayList<Item>();
-        var groupRows = cart.configurationLines(header.id());
         var demand = new HashMap<Long, Long>();
         rows.forEach(row -> demand.merge(row.productId(), (long) row.quantity(), Long::sum));
         groupRows.forEach(row -> demand.merge(row.productId(), (long) row.quantity(), Long::sum));
@@ -269,8 +383,16 @@ public class ShoppingCart {
         for (var group : groupItems.entrySet()) {
             var members = List.copyOf(group.getValue());
             var amount = members.stream().map(Item::amount).reduce(money(BigDecimal.ZERO), BigDecimal::add);
-            boolean valid = members.stream().allMatch(item -> item.state().equals("VALID"));
-            configurations.add(new Configuration(group.getKey(), members, amount, valid));
+            var source = groupRows.stream().filter(row -> row.id() == group.getKey()).toList();
+            var diagnosis = diagnosis(source);
+            var reasons = new ArrayList<>(diagnosis.reasons());
+            members.stream().filter(item -> !item.state().equals("VALID")).forEach(item -> reasons.add(item.sku() + "：" + item.message()));
+            String state = List.of("OFF_SALE", "OUT_OF_STOCK", "INSUFFICIENT_STOCK").stream()
+                    .filter(candidate -> members.stream().anyMatch(item -> item.state().equals(candidate)))
+                    .findFirst().orElse(diagnosis.state());
+            boolean valid = state.equals("VALID");
+            configurations.add(new Configuration(group.getKey(), members, amount, valid,
+                    digest(source.toString() + diagnosis.version()), state, List.copyOf(reasons)));
             total = total.add(amount);
             if (valid) { validTotal = validTotal.add(amount); validCount++; }
         }
@@ -324,7 +446,11 @@ public class ShoppingCart {
                 String state, String message,
                 @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal amount) {}
     record Configuration(long id, List<Item> items,
-                         @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal amount, boolean valid) {}
+                         @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal amount, boolean valid, String editToken,
+                         String state, List<String> reasons) {}
+    record SkuDemand(long productId, long quantity) {}
+    record Preview(long revision, String status, String quoteToken, List<Item> items, List<Configuration> configurations,
+                   @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal total, List<SkuDemand> skuDemand) {}
 
     @JsonInclude(JsonInclude.Include.ALWAYS)
     record CartView(long revision, List<Item> items,
