@@ -293,6 +293,20 @@ public class ShoppingCart {
         if (rows.size() != itemIds.size() || groups.stream().map(CartMapper.LineView::id).distinct().count() != configurationIds.size()) {
             throw new CartException(HttpStatus.NOT_FOUND, "CART_ITEM_NOT_FOUND", "选中的购物项或完整组不存在，请刷新购物车。");
         }
+        return quotation(accountId, header, rows, groups, quoteToken);
+    }
+
+    /** Called by order creation only after the selected products are exclusively locked. */
+    Preview singleOrderQuote(long accountId, CartMapper.CartRow header, Set<Long> itemIds, String quoteToken) {
+        var rows = cart.lines(header.id()).stream().filter(row -> itemIds.contains(row.id())).toList();
+        if (rows.size() != itemIds.size()) {
+            throw new CartException(HttpStatus.NOT_FOUND, "CART_ITEM_NOT_FOUND", "选中的单品不存在。");
+        }
+        return quotation(accountId, header, rows, List.of(), quoteToken);
+    }
+
+    private Preview quotation(long accountId, CartMapper.CartRow header, List<CartMapper.LineView> rows,
+            List<CartMapper.LineView> groups, String quoteToken) {
         var selected = render(header, rows, groups);
         if (selected.validCount() != selected.lineCount()) {
             throw new CartException(HttpStatus.CONFLICT, "CART_SELECTION_INVALID", "选中项缺货、下架、不兼容或无法验证，请刷新诊断并调整选择。");
@@ -302,7 +316,7 @@ public class ShoppingCart {
         rows.forEach(row -> demand.merge(row.productId(), (long) row.quantity(), Long::sum));
         groups.forEach(row -> demand.merge(row.productId(), (long) row.quantity(), Long::sum));
         String status = quoteToken == null ? "CONFIRMATION_REQUIRED" : quoteToken.equals(token) ? "READY" : "RECONFIRMATION_REQUIRED";
-        return new Preview(revision, status, token, selected.items(), selected.configurations(), selected.total(),
+        return new Preview(header.revision(), status, token, selected.items(), selected.configurations(), selected.total(),
                 demand.entrySet().stream().map(entry -> new SkuDemand(entry.getKey(), entry.getValue())).toList());
     }
 
