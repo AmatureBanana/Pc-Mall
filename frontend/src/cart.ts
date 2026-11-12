@@ -19,6 +19,12 @@ export interface CheckoutPreview {
   items: CartItem[]; configurations: Cart['configurations']; total: string
   skuDemand: { productId: number; quantity: number }[]
 }
+export interface Order {
+  orderNumber: string; status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'COMPLETED'; currency: 'CNY'
+  total: string; createdAt: string; paymentDeadline: string
+  items: { productId: number; sku: string; name: string; model: string; category: string; price: string
+    quantity: number; amount: string; configurationId: number | null }[]
+}
 /**
  * The per-line cart quantity bound, mirroring the server rule and the V19 check constraint.
  * It bounds a single-item line, independently of aggregate stock demand.
@@ -102,6 +108,10 @@ const cart = ref<Cart | null>(null)
 const loading = ref(false)
 const error = ref('')
 const notice = ref('')
+type OrderInput = { revision: number; itemIds: number[]; configurationIds: number[]; quoteToken: string; requestKey: string }
+const orderAttempt = ref<{ input: OrderInput; uncertain: boolean } | null>(null)
+const orderBusy = ref(false)
+const order = ref<Order | null>(null)
 const editing = ref<{ id: number; revision: number; editToken: string; workspace: Workspace; previousWorkspace?: Workspace } | null>(null)
 type Scope = { identity: number; order: number; signal: AbortSignal }
 type AddAttempt = { key: string; inflight: Promise<boolean> | null }
@@ -123,6 +133,9 @@ function clear() {
   controller = new AbortController()
   inflight = null
   uncertainAdds.clear()
+  orderAttempt.value = null
+  orderBusy.value = false
+  order.value = null
   finishEdit()
   acceptedOrder = latestAction = 0
   cart.value = null
@@ -340,8 +353,65 @@ async function checkoutPreview(itemIds: number[], configurationIds: number[], qu
 const count = computed(() => cart.value
   ? cart.value.items.reduce((sum, item) => sum + item.quantity, cart.value.configurations.length) : 0)
 
+function parseOrder(value: unknown): Order {
+  const result = value as Order | null
+  if (!result || typeof result.orderNumber !== 'string' || !/^O[a-f0-9]{32}$/.test(result.orderNumber)
+    || !['PENDING_PAYMENT', 'PAID', 'CANCELLED', 'COMPLETED'].includes(result.status) || result.currency !== 'CNY'
+    || !isMoney(result.total) || !Number.isFinite(Date.parse(result.createdAt)) || !Number.isFinite(Date.parse(result.paymentDeadline))
+    || !Array.isArray(result.items) || result.items.length === 0 || !result.items.every(item => item
+      && Number.isSafeInteger(item.productId) && item.productId > 0
+      && ['sku', 'name', 'model', 'category'].every(key => typeof item[key as keyof typeof item] === 'string')
+      && Number.isSafeInteger(item.quantity) && item.quantity > 0 && item.quantity <= cartQuantity.max
+      && isMoney(item.price) && isMoney(item.amount) && item.configurationId === null)) {
+    throw new Error('订单数据格式异常，请重试核对结果。')
+  }
+  return result
+}
+
+/** Retain the exact request and key until an unknown transport outcome has been resolved. */
+async function createOrder(quote?: CheckoutPreview): Promise<boolean> {
+  if (orderBusy.value) return false
+  if (!orderAttempt.value) {
+    if (!quote || quote.status !== 'READY' || quote.configurations.length) return false
+    orderAttempt.value = { input: { revision: quote.revision, itemIds: quote.items.map(item => item.id),
+      configurationIds: [], quoteToken: quote.quoteToken, requestKey: requestKey() }, uncertain: false }
+  }
+  const attempt = orderAttempt.value
+  const retry = attempt.uncertain
+  const request = beginAction()
+  orderBusy.value = true
+  try {
+    const result = parseOrder(await write('/api/orders', attempt.input, 'POST', request.signal))
+    if (!current(request)) return false
+    order.value = result
+    orderAttempt.value = null
+    window.location.hash = `order/${result.orderNumber}`
+    void refreshCart(true)
+    return true
+  } catch (cause) {
+    if (!current(request)) return false
+    const refused = cause instanceof AuthError && cause.status >= 400 && cause.status < 500
+    // These domain failures occur only after the server checks the successful idempotency
+    // record under the cart lock. Unlike CSRF/authentication refusal, they resolve uncertainty.
+    const resolved = refused && ['CART_CONFLICT', 'PRICE_CONFIRMATION_REQUIRED', 'CART_SELECTION_INVALID', 'CART_ITEM_NOT_FOUND'].includes(cause.code ?? '')
+    if (refused && (!retry || resolved)) orderAttempt.value = null
+    else attempt.uncertain = true
+    failure(request, refused && (!retry || resolved) ? cause : new Error('下单结果暂未确认，请点击“重试确认上次下单”，使用原请求核对同一笔订单。'), '下单失败，请重新核验报价。')
+    return false
+  } finally { if (current(request)) orderBusy.value = false }
+}
+
+async function loadOrder(number: string): Promise<void> {
+  const operation = beginAction()
+  order.value = null
+  try {
+    const result = parseOrder(await request(`/api/orders/${encodeURIComponent(number)}`, { signal: operation.signal }))
+    if (current(operation) && operation.order === latestAction) order.value = result
+  } catch (cause) { failure(operation, cause, '订单暂时无法读取，请重试。') }
+}
+
 export function useCart() {
   const refresh = () => refreshCart()
   return { cart, loading, error, notice, count, refresh, clear, add, update, remove, addConfiguration, removeConfiguration,
-    editing, startEdit, cancelEdit, replaceConfiguration, checkoutPreview }
+    editing, startEdit, cancelEdit, replaceConfiguration, checkoutPreview, orderAttempt, orderBusy, createOrder, order, loadOrder }
 }

@@ -8,6 +8,7 @@ import ProductPerformanceTags from './ProductPerformanceTags.vue'
 import AccountPanel from './AccountPanel.vue'
 import DiyWorkspace from './DiyWorkspace.vue'
 import CartPanel from './CartPanel.vue'
+import OrderPanel from './OrderPanel.vue'
 import { categories, formatPrice, imageFallback, loadProducts, type Category } from './catalog'
 import { useCatalogRequest } from './useCatalogRequest'
 import { signedIn } from './auth'
@@ -26,6 +27,7 @@ const priceRange = ref({ min: 0, max: Infinity })
 const filterError = ref('')
 const showDataNote = ref(false)
 const detailId = ref<string | null>(null)
+const orderNumber = ref<string | null>(null)
 const diyOpen = ref(window.location.hash.startsWith('#diy'))
 const cartOpen = ref(window.location.hash === '#cart')
 const { data, status, error, refresh } = useCatalogRequest(
@@ -39,7 +41,7 @@ const visibleProducts = computed(() => {
   return items
 })
 function search() {
-  if (diyOpen.value || cartOpen.value) window.location.hash = ''
+  if (diyOpen.value || cartOpen.value || orderNumber.value) window.location.hash = ''
   const next = searchInput.value.trim()
   if (keyword.value === next) void refresh()
   else keyword.value = next
@@ -62,6 +64,7 @@ function resetFilters() {
 }
 function syncDetail() {
   const hash = window.location.hash
+  orderNumber.value = hash.startsWith('#order/') ? hash.slice(7) : null
   cartOpen.value = hash === '#cart'
   if (hash.startsWith('#diy')) diyOpen.value = true
   else if (hash === '' || hash === '#' || hash.startsWith('#product/')) diyOpen.value = false
@@ -88,11 +91,12 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
       <form class="search" role="search" @submit.prevent="search"><HardwareIcon name="search"/><input v-model="searchInput" aria-label="搜索商品" placeholder="搜索商品名称、型号或关键词（如：RTX 4070、i5、SSD …）" maxlength="100"/><ElButton native-type="submit" type="primary" class="search-button"><HardwareIcon name="search"/>搜索</ElButton></form>
       <button v-if="signedIn" type="button" class="header-cart" :aria-current="cartOpen ? 'page' : undefined" @click="openCart"><HardwareIcon name="cart"/>购物车<span v-if="cartCount" class="cart-count" :aria-label="`购物车共 ${cartCount} 件`">{{ cartCount }}</span><HardwareIcon name="chevron-right"/></button>
     </div></header>
-    <nav v-if="!diyOpen && !cartOpen" class="category-nav" aria-label="硬件分类"><div class="nav-inner page-width">
+    <nav v-if="!diyOpen && !cartOpen && !orderNumber" class="category-nav" aria-label="硬件分类"><div class="nav-inner page-width">
       <button v-for="category in categories" :key="category.code" :class="{ active: selectedCategory === category.code }" :aria-pressed="selectedCategory === category.code" @click="selectedCategory = category.code"><HardwareIcon :name="category.icon"/>{{ category.code === 'COOLER' ? '散热器' : category.label }}</button>
     </div></nav>
-    <DiyWorkspace v-if="diyOpen" v-show="!cartOpen"/>
-    <CartPanel v-if="cartOpen && signedIn" @close="closeDetail"/>
+    <DiyWorkspace v-if="diyOpen" v-show="!cartOpen && !orderNumber"/>
+    <OrderPanel v-if="orderNumber" :number="orderNumber"/>
+    <CartPanel v-else-if="cartOpen && signedIn" @close="closeDetail"/>
     <main v-else-if="cartOpen" class="page-width" aria-label="我的购物车"><ElEmpty description="请先登录查看购物车。"><ElButton type="primary" @click="openDetailSignIn">前往登录</ElButton></ElEmpty></main>
     <main v-else-if="!diyOpen" class="main page-width">
       <aside class="sidebar" aria-label="商品筛选">

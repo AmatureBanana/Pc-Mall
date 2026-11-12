@@ -6,7 +6,8 @@ import HardwareIcon from './HardwareIcon.vue'
 import { cartQuantity, useCart, type CartItem, type CheckoutPreview } from './cart'
 
 const emit = defineEmits<{ close: [] }>()
-const { cart, loading, error, notice, refresh, update, remove, removeConfiguration, startEdit, checkoutPreview } = useCart()
+const { cart, loading, error, notice, refresh, update, remove, removeConfiguration, startEdit, checkoutPreview,
+  createOrder, orderAttempt, orderBusy } = useCart()
 const busy = ref(new Set<number>())
 const removingConfiguration = ref<number | null>(null)
 const pending = ref<Record<number, string>>({})
@@ -96,6 +97,11 @@ async function checkQuote(confirm = false) {
     quote.value = result
   } finally { if (attempt === quoteAttempt) quoteBusy.value = false }
 }
+async function submitOrder() {
+  if (quoteBusy.value || orderBusy.value || !quote.value) return
+  const current = quote.value
+  if (!await createOrder(current) && quote.value === current) quote.value = { ...current, status: 'CONFIRMATION_REQUIRED' }
+}
 function closeQuote() { quoteAttempt++; quoteOpen.value = false; quote.value = null; quoteBusy.value = false }
 function toggleGroup(id: number) {
   if (collapsed.value.has(id)) collapsed.value.delete(id)
@@ -174,6 +180,7 @@ async function removeRows(all: boolean) {
     </div>
     <p v-if="error" role="alert" class="auth-error">{{ error }}</p>
     <p v-else-if="notice" role="status" class="auth-success">{{ notice }}</p>
+    <ElButton v-if="orderAttempt?.uncertain" :loading="orderBusy" @click="createOrder()">重试确认上次下单</ElButton>
     <div class="cart-layout">
       <section class="cart-content" aria-label="购物车明细" :aria-busy="loading">
         <div class="cart-toolbar">
@@ -296,8 +303,12 @@ async function removeRows(all: boolean) {
         <p>服务端选中总额：<strong aria-label="服务端选中总额" class="cart-price">¥{{ formatPrice(quote.total) }}</strong></p>
         <p v-if="quote.status === 'READY'" role="status" class="auth-success">预检查通过，当前报价已确认。创建订单时仍须重新核验。</p>
       </template>
-      <p class="cart-summary-note">本次只检查选中单品和完整组，不创建订单、不预占库存。确认报价不锁价，价格再次变化须重新确认。</p>
-      <template #footer><ElButton @click="closeQuote">返回购物车</ElButton><ElButton type="primary" :loading="quoteBusy" :disabled="!quote || quoteBusy" @click="checkQuote(true)">确认并重新核验报价</ElButton></template>
+      <p class="cart-summary-note">重新核验报价不预占库存；点击“创建订单”后才会下单并预占。确认报价不锁价，价格再次变化须重新确认。</p>
+      <p v-if="quote?.configurations.length" class="cart-problem">配置组下单尚未开放，请返回购物车仅选择单品。</p>
+      <template #footer><ElButton @click="closeQuote">返回购物车</ElButton><ElButton type="primary" :loading="quoteBusy" :disabled="!quote || quoteBusy || orderBusy" @click="checkQuote(true)">确认并重新核验报价</ElButton>
+        <ElButton type="primary" :loading="orderBusy" :disabled="!quote || quote.status !== 'READY' || !!quote.configurations.length || quoteBusy || orderBusy || !!orderAttempt" @click="submitOrder">创建订单</ElButton>
+        <ElButton v-if="orderAttempt?.uncertain" :loading="orderBusy" @click="createOrder()">重试确认上次下单</ElButton>
+      </template>
     </ElDialog>
   </main>
 </template>

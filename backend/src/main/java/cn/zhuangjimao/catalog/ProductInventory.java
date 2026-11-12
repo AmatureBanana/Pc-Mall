@@ -17,6 +17,12 @@ public class ProductInventory {
 
     @Transactional
     public Reservation reserve(String reference, Map<Long,Integer> quantities) {
+        return reserve(reference, quantities, () -> {});
+    }
+
+    /** Final order validation runs under every product write lock, before any stock changes. */
+    @Transactional
+    public Reservation reserve(String reference, Map<Long,Integer> quantities, Runnable validate) {
         reference(reference);
         if (quantities == null || quantities.isEmpty()) invalid("预占明细不能为空。");
         var sorted = new TreeMap<Long,Integer>();
@@ -36,6 +42,7 @@ public class ProductInventory {
             return new Reservation(header.state(), previous);
         }
         var balances = lockProducts(sorted.keySet());
+        validate.run();
         for (var balance : balances) {
             int quantity = sorted.get(balance.id());
             if (!balance.status().equals("ON_SALE") || balance.stock() < quantity) conflict("商品已下架或可售库存不足。");

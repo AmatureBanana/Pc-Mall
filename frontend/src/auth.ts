@@ -10,7 +10,7 @@ export interface Account {
 export const signedIn = ref(false)
 export interface AdminModule { code: string; title: string; description: string; availability: string }
 export class AuthError extends Error {
-  constructor(message: string, readonly status: number) { super(message) }
+  constructor(message: string, readonly status: number, readonly code?: string) { super(message) }
 }
 
 export async function request(path: string, init?: RequestInit): Promise<unknown> {
@@ -19,7 +19,8 @@ export async function request(path: string, init?: RequestInit): Promise<unknown
   if (!response.ok) {
     const message = body && typeof body === 'object' && 'message' in body && typeof body.message === 'string'
       ? body.message : '账户服务暂时不可用，请稍后重试。'
-    throw new AuthError(message, response.status)
+    const code = body && typeof body === 'object' && 'code' in body && typeof body.code === 'string' ? body.code : undefined
+    throw new AuthError(message, response.status, code)
   }
   if (!body || typeof body !== 'object') throw new Error('账户服务返回格式异常。')
   return 'data' in body ? body.data : body
