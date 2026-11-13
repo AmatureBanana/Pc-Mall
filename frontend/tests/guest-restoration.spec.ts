@@ -10,9 +10,9 @@ const SEEN = 'pc-mall.diy.seen.v1'
 
 const choices = [
   ['CPU', 'Intel Core i5-14600K'], ['主板', '华硕 TUF B760M-PLUS WIFI'],
-  ['内存', '金士顿 FURY Beast 16GB'], ['SSD', '三星 990 PRO 1TB'],
+  ['内存', '金士顿 FURY Beast 16GB'], ['硬盘', '三星 990 PRO 1TB'],
   ['电源', '海盗船 RM750e 全模组电源'], ['机箱', '九州风神 CC560 中塔机箱'],
-  ['独立散热器', '九州风神 AK400 风冷散热器'],
+  ['CPU散热器', '九州风神 AK400 风冷散热器'],
 ]
 
 const cartPattern = /^\/api\/cart(\/|$)/
@@ -147,7 +147,7 @@ async function retire(admin: Awaited<ReturnType<typeof adminApi>>, path: string)
 
 async function selectAll(page: Page) {
   for (const [category, name] of choices) {
-    await categories(page).getByRole('button', { name: new RegExp(`^${category}`) }).click()
+    await categories(page).getByRole('button', { name: new RegExp(`^${category} `) }).click()
     await page.getByRole('button', { name: `选择 ${name}`, exact: true }).click()
     if (category === 'CPU') {
       await categories(page).getByRole('button', { name: /^显卡 / }).click()

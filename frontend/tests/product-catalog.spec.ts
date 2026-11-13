@@ -43,7 +43,7 @@ test('SYS-T01 catalog: guest opens memory details and can reload the direct URL'
 test('all eight categories are reachable through the real catalog', async ({ page }) => {
   await page.goto('/')
   const nav = page.getByRole('navigation', { name: '硬件分类' })
-  for (const [label, count] of [['CPU', 3], ['主板', 2], ['显卡', 2], ['内存', 1], ['SSD', 2], ['电源', 1], ['机箱', 1], ['散热器', 1]] as const) {
+  for (const [label, count] of [['CPU', 3], ['主板', 2], ['显卡', 2], ['内存', 1], ['硬盘', 2], ['电源', 1], ['机箱', 1], ['CPU散热器', 1]] as const) {
     await nav.getByRole('button', { name: label, exact: true }).click()
     await expect(page.getByRole('article')).toHaveCount(count)
     await expect(nav.getByRole('button', { name: label, exact: true })).toHaveAttribute('aria-pressed', 'true')
@@ -91,7 +91,7 @@ test('category request failure can retry the same selection', async ({ page }) =
   await page.goto('/')
   await expect(page.getByRole('article')).toHaveCount(13)
   await page.route('**/api/products?category=SSD', route => route.fulfill({ status: 503, json: { code: 'CATALOG_UNAVAILABLE' } }))
-  await page.getByRole('navigation', { name: '硬件分类' }).getByRole('button', { name: 'SSD', exact: true }).click()
+  await page.getByRole('navigation', { name: '硬件分类' }).getByRole('button', { name: '硬盘', exact: true }).click()
   await expect(page.getByRole('heading', { name: '商品加载失败' })).toBeVisible()
   await expect(page.getByText('没有找到符合条件的商品')).toHaveCount(0)
   await page.unroute('**/api/products?category=SSD')

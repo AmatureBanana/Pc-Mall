@@ -1,6 +1,7 @@
 package cn.zhuangjimao.cart;
 
 import cn.zhuangjimao.catalog.HardwareCategory;
+import cn.zhuangjimao.catalog.DiyMemory;
 import cn.zhuangjimao.compatibility.CompatibilityService;
 import cn.zhuangjimao.compatibility.RuleState;
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -263,6 +264,10 @@ public class ShoppingCart {
     private Diagnosis diagnosis(List<CartMapper.LineView> rows) {
         var selections = new java.util.EnumMap<HardwareCategory, Long>(HardwareCategory.class);
         rows.forEach(row -> selections.put(HardwareCategory.valueOf(row.category()), row.productId()));
+        if (selections.size() != rows.size() || rows.stream().anyMatch(row -> row.category().equals("MEMORY")
+                ? !DiyMemory.validQuantity(row.quantity(), true) : row.quantity() != 1)) {
+            return new Diagnosis("UNVERIFIED", List.of("配置类别或数量不符合完整装机要求，请返回 DIY 整组编辑。"), "UNVERIFIED");
+        }
         int memoryQuantity = rows.stream().filter(row -> row.category().equals("MEMORY"))
                 .mapToInt(CartMapper.LineView::quantity).findFirst().orElse(1);
         try {
@@ -288,21 +293,17 @@ public class ShoppingCart {
         var header = ownedHeader(accountId);
         if (header.revision() != revision) changeConflict();
         lockProducts(header.id(), List.of());
+        return orderQuote(accountId, header, itemIds, configurationIds, quoteToken);
+    }
+
+    /** Caller holds the cart and catalog locks; order creation uses exclusive product locks. */
+    Preview orderQuote(long accountId, CartMapper.CartRow header, Set<Long> itemIds, Set<Long> configurationIds, String quoteToken) {
         var rows = cart.lines(header.id()).stream().filter(row -> itemIds.contains(row.id())).toList();
         var groups = cart.configurationLines(header.id()).stream().filter(row -> configurationIds.contains(row.id())).toList();
         if (rows.size() != itemIds.size() || groups.stream().map(CartMapper.LineView::id).distinct().count() != configurationIds.size()) {
-            throw new CartException(HttpStatus.NOT_FOUND, "CART_ITEM_NOT_FOUND", "选中的购物项或完整组不存在，请刷新购物车。");
+            throw new CartException(HttpStatus.NOT_FOUND, "CART_ITEM_NOT_FOUND", "选中的单品或完整配置组不存在。");
         }
         return quotation(accountId, header, rows, groups, quoteToken);
-    }
-
-    /** Called by order creation only after the selected products are exclusively locked. */
-    Preview singleOrderQuote(long accountId, CartMapper.CartRow header, Set<Long> itemIds, String quoteToken) {
-        var rows = cart.lines(header.id()).stream().filter(row -> itemIds.contains(row.id())).toList();
-        if (rows.size() != itemIds.size()) {
-            throw new CartException(HttpStatus.NOT_FOUND, "CART_ITEM_NOT_FOUND", "选中的单品不存在。");
-        }
-        return quotation(accountId, header, rows, List.of(), quoteToken);
     }
 
     private Preview quotation(long accountId, CartMapper.CartRow header, List<CartMapper.LineView> rows,

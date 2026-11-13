@@ -3,13 +3,13 @@ import { isPerformanceTag, type PerformanceTag } from './performance'
 export const categories = [
   { code: 'ALL', label: '全部商品', icon: 'grid' },
   { code: 'CPU', label: 'CPU', icon: 'cpu' },
+  { code: 'COOLER', label: 'CPU散热器', icon: 'cooler' },
   { code: 'MOTHERBOARD', label: '主板', icon: 'board' },
   { code: 'GPU', label: '显卡', icon: 'gpu' },
   { code: 'MEMORY', label: '内存', icon: 'memory' },
-  { code: 'SSD', label: 'SSD', icon: 'ssd' },
+  { code: 'SSD', label: '硬盘', icon: 'ssd' },
   { code: 'PSU', label: '电源', icon: 'psu' },
   { code: 'CASE', label: '机箱', icon: 'case' },
-  { code: 'COOLER', label: '独立散热器', icon: 'cooler' },
 ] as const
 export type Category = typeof categories[number]['code']
 export interface ProductIdentity {

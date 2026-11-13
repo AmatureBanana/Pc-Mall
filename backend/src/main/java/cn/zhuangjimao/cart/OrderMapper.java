@@ -20,10 +20,16 @@ interface OrderMapper {
     void create(String number, long accountId, BigDecimal total, LocalDateTime createdAt, LocalDateTime deadline);
 
     @Insert("""
-        INSERT INTO order_item(order_number,product_id,sku,name,model,category,price,quantity,amount)
-        VALUES(#{number},#{item.productId},#{item.sku},#{item.name},#{item.model},#{item.category},#{item.price},#{item.quantity},#{item.amount})
+        INSERT INTO order_item(order_number,product_id,sku,name,model,category,price,quantity,amount,configuration_id)
+        VALUES(#{number},#{item.productId},#{item.sku},#{item.name},#{item.model},#{item.category},#{item.price},#{item.quantity},#{item.amount},#{configurationId})
         """)
-    void snapshot(String number, ShoppingCart.Item item);
+    void snapshot(String number, ShoppingCart.Item item, Long configurationId);
+
+    @Insert("INSERT INTO order_configuration(order_number,configuration_id,amount) VALUES(#{number},#{group.id},#{group.amount})")
+    void configuration(String number, ShoppingCart.Configuration group);
+
+    @Select("SELECT configuration_id AS id,amount FROM order_configuration WHERE order_number=#{number} ORDER BY configuration_id")
+    List<SingleItemOrders.Configuration> configurations(String number);
 
     @Select("SELECT order_number,status,currency,total,created_at,payment_deadline FROM mall_order WHERE account_id=#{accountId} AND order_number=#{number}")
     Header order(long accountId, String number);

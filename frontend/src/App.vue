@@ -92,7 +92,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
       <button v-if="signedIn" type="button" class="header-cart" :aria-current="cartOpen ? 'page' : undefined" @click="openCart"><HardwareIcon name="cart"/>购物车<span v-if="cartCount" class="cart-count" :aria-label="`购物车共 ${cartCount} 件`">{{ cartCount }}</span><HardwareIcon name="chevron-right"/></button>
     </div></header>
     <nav v-if="!diyOpen && !cartOpen && !orderNumber" class="category-nav" aria-label="硬件分类"><div class="nav-inner page-width">
-      <button v-for="category in categories" :key="category.code" :class="{ active: selectedCategory === category.code }" :aria-pressed="selectedCategory === category.code" @click="selectedCategory = category.code"><HardwareIcon :name="category.icon"/>{{ category.code === 'COOLER' ? '散热器' : category.label }}</button>
+      <button v-for="category in categories" :key="category.code" :class="{ active: selectedCategory === category.code }" :aria-pressed="selectedCategory === category.code" @click="selectedCategory = category.code"><HardwareIcon :name="category.icon"/>{{ category.label }}</button>
     </div></nav>
     <DiyWorkspace v-if="diyOpen" v-show="!cartOpen && !orderNumber"/>
     <OrderPanel v-if="orderNumber" :number="orderNumber"/>
