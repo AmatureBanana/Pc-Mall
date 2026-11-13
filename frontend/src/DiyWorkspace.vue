@@ -65,6 +65,11 @@ const integratedGraphics = computed(() => {
 const integratedSelected = computed(() => Boolean(workspace.value.integratedGraphicsCpuId
   && workspace.value.integratedGraphicsCpuId === selectedId('CPU')))
 const slotSelected = (category: HardwareCategory) => Boolean(selectedId(category) || category === 'GPU' && integratedSelected.value)
+const transferCategories = computed(() => displayCategories.filter(({ code }) => slotSelected(code)))
+const canTransfer = computed(() => displayCategories.every(({ code }) => slotSelected(code))
+  && checkStatus.value === 'ready' && check.value?.revision === workspace.value.revision
+  && check.value.complete && check.value.corePassed && !memoryQuantityTooHigh.value
+  && restoration.value.phase !== 'running')
 const integratedParameters = computed(() => integratedGraphics.value?.parameters.filter(item => item.code.startsWith('igpu')) ?? [])
 const integratedModel = computed(() => integratedParameters.value.find(item => item.code === 'igpuModel')?.value ?? 'CPU 内置图形处理器')
 watch(() => [selectedId('CPU'), quoteItem('CPU')?.product?.revision], () => { void cpuDetails.refresh() }, { immediate: true })
@@ -132,11 +137,12 @@ function clearConfiguration() {
   resetFilters()
 }
 function openTransfer() {
+  if (!canTransfer.value || transferring.value) return
   cartError.value = ''
   transferOpen.value = true
 }
 async function confirmTransfer() {
-  if (transferring.value) return
+  if (!canTransfer.value || transferring.value) return
   if (!signedIn.value) {
     transferOpen.value = false
     beginWorkspaceSignIn(true)
@@ -282,7 +288,7 @@ onMounted(() => { void refresh() })
             </section>
             <div class="diy-actions">
               <p class="diy-save-note" role="status">{{ storageWarning ? '配置尚未保存，当前页面仍可继续编辑。' : '方案保存在当前标签页，刷新后可继续编辑。' }}</p>
-              <div><ElButton v-if="editing" :disabled="transferring" @click="cancelEdit">取消整组编辑</ElButton><ElButton v-else :disabled="!count" aria-label="清空配置" @click="clearOpen = true"><HardwareIcon name="reset"/>重置配置</ElButton><ElButton type="primary" :disabled="!count || transferring" @click="openTransfer"><HardwareIcon name="layers"/>{{ editing ? '保存整组修改' : '转入购物车' }}</ElButton></div>
+              <div><ElButton v-if="editing" :disabled="transferring" @click="cancelEdit">取消整组编辑</ElButton><ElButton v-else :disabled="!count" aria-label="清空配置" @click="clearOpen = true"><HardwareIcon name="reset"/>重置配置</ElButton><ElButton type="primary" :disabled="!canTransfer || transferring" @click="openTransfer"><HardwareIcon name="layers"/>{{ editing ? '保存整组修改' : '转入购物车' }}</ElButton></div>
               <p v-if="editing" class="diy-status-note">正在编辑购物车配置组。保存时重新验证；取消或失败保留原组。</p>
             </div>
           </div>
@@ -340,16 +346,16 @@ onMounted(() => { void refresh() })
       <p class="transfer-intro">{{ editing ? '请核对配件。确认后原子替换原组；冲突或失败保留原组。' : signedIn ? '请核对配件。确认后将整套方案加入购物车。' : '请先登录。登录后会返回当前方案，你可以再确认加入购物车。' }}</p>
       <section class="transfer-preview" aria-label="待加入的装机方案">
         <strong>当前装机方案</strong><span> · {{ totalUnits }} 件配件</span>
-        <ul><li v-for="selection in workspace.selections" :key="selection.category">
-          {{ labels[selection.category] }} · {{ selectionName(selection.category) }}
-          <span v-if="selection.category === 'MEMORY'"> ×{{ memoryQuantity }} 根</span>
-        </li><li v-if="integratedSelected">显卡 · {{ selectionName('GPU') }}</li></ul>
+        <ul><li v-for="category in transferCategories" :key="category.code">
+          {{ labels[category.code] }} · {{ selectionName(category.code) }}
+          <span v-if="category.code === 'MEMORY'"> ×{{ memoryQuantity }} 根</span>
+        </li></ul>
       </section>
       <dl class="transfer-total"><div><dt>参考总价</dt><dd>{{ quote?.total != null && quote.revision === workspace.revision && quoteStatus === 'ready' ? '¥' + formatPrice(quote.total) : '待核价' }}</dd></div></dl>
       <p class="transfer-intro">加入时会重新核验价格、库存和兼容性，参考价不锁定。</p>
       <p v-if="memoryQuantityTooHigh" class="auth-error" role="alert">请调低内存数量或更换主板后再转入购物车。</p>
       <p v-if="cartError" class="auth-error" role="alert">{{ cartError }}</p>
-      <template #footer><ElButton :disabled="transferring" @click="transferOpen = false">取消</ElButton><ElButton type="primary" :loading="transferring" :disabled="signedIn && memoryQuantity > memoryLimit" @click="confirmTransfer">{{ signedIn ? '确定' : '前往登录' }}</ElButton></template>
+      <template #footer><ElButton :disabled="transferring" @click="transferOpen = false">取消</ElButton><ElButton type="primary" :loading="transferring" :disabled="!canTransfer" @click="confirmTransfer">{{ signedIn ? '确定' : '前往登录' }}</ElButton></template>
     </ElDialog>
   </main>
 </template>
@@ -486,6 +492,7 @@ onMounted(() => { void refresh() })
 .diy-actions .el-button { height: 41px; margin: 0; font-size: 14px; font-weight: 650; border-color: #5389ff; color: #0968fa; border-radius: 8px; background: #fff; }
 .diy-actions .el-button--primary { background: #075dff; color: #fff; border-color: #075dff; }
 .diy-actions .el-button.is-disabled { opacity: .5; }
+.diy-actions .el-button--primary.is-disabled { background: #e4e7ed; border-color: #dcdfe6; color: #909399; opacity: 1; }
 .diy-actions svg { width: 18px; height: 18px; margin-right: 7px; }
 .diy-save-note { text-align: center; font-size: 10px; line-height: 1.7; color: #8593ae; margin: 0 0 9px; }
 .diy-warning { color: #9c5d16; border: 1px solid #f0d6aa; background: #fff8ec; padding: 10px 12px; border-radius: 7px; font-size: 12px; line-height: 1.7; margin: 0; }

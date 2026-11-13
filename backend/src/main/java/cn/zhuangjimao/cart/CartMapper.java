@@ -72,6 +72,9 @@ interface CartMapper {
     @Select("SELECT id FROM cart_configuration WHERE cart_id=#{cartId} AND id=#{id} FOR UPDATE")
     Long ownedConfiguration(long cartId, long id);
 
+    @Select("SELECT product_id,quantity FROM cart_configuration_item WHERE configuration_id=#{id} ORDER BY product_id FOR UPDATE")
+    List<ConfigurationItem> configurationItems(long id);
+
     @Select("SELECT product_id FROM shopping_cart_item WHERE cart_id=#{cartId} FOR UPDATE")
     List<Long> singleProductIds(long cartId);
 
@@ -124,6 +127,7 @@ interface CartMapper {
     int completeRequest(long accountId, String requestKey, String result);
 
     record CartRow(long id, long revision) {}
+    record ConfigurationItem(long productId, int quantity) {}
     record LineRow(long id, long cartId, long productId, int quantity) {}
     record StockRow(long id, String sku, String status, int stock, BigDecimal price, String category) {}
     record RequestRow(String fingerprint, String creationToken, String result) {}

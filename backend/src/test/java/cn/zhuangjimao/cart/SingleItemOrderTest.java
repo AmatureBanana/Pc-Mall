@@ -138,7 +138,7 @@ class SingleItemOrderTest {
         assertThat(post(other, "/api/orders", input).statusCode()).isEqualTo(404);
         var mixed = new LinkedHashMap<>(input);
         mixed.put("configurationIds", List.of(1));
-        assertThat(code(post(owner, "/api/orders", mixed))).isEqualTo("MIXED_ORDER_NOT_SUPPORTED");
+        assertThat(code(post(owner, "/api/orders", mixed))).isEqualTo("CART_ITEM_NOT_FOUND");
         db.update("UPDATE products SET price=12.35,revision=revision+1 WHERE id=?", sku);
         assertThat(code(post(owner, "/api/orders", input))).isEqualTo("PRICE_CONFIRMATION_REQUIRED");
         var quote = orderInput(owner, cart, List.of(item), "secure-order");

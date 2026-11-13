@@ -24,6 +24,7 @@ export interface Order {
   total: string; createdAt: string; paymentDeadline: string
   items: { productId: number; sku: string; name: string; model: string; category: string; price: string
     quantity: number; amount: string; configurationId: number | null }[]
+  configurations: { id: number; amount: string }[]
 }
 /**
  * The per-line cart quantity bound, mirroring the server rule and the V19 check constraint.
@@ -45,21 +46,25 @@ function isItem(value: unknown): value is CartItem {
     && cartStates.includes(item.state as CartState)
 }
 
+function validConfigurationMembers(items: { category: string; productId: number; quantity: number }[]): boolean {
+  const categories = new Set(items.map(item => item.category))
+  return items.length >= 7 && items.length <= 8 && categories.size === items.length
+    && new Set(items.map(item => item.productId)).size === items.length
+    && hardwareCategories.every(({ code }) => code === 'GPU' || categories.has(code))
+    && items.every(item => hardwareCategories.some(({ code }) => code === item.category)
+      && (item.category === 'MEMORY' ? item.quantity <= maxDiyMemoryQuantity : item.quantity === 1))
+}
+
 function isConfiguration(value: unknown): value is Cart['configurations'][number] {
   if (!value || typeof value !== 'object') return false
   const group = value as Record<string, unknown>
   if (!Number.isSafeInteger(group.id) || Number(group.id) <= 0 || !Array.isArray(group.items)
-      || group.items.length < 7 || group.items.length > 8 || !group.items.every(isItem)
+      || !group.items.every(isItem)
       || !isMoney(group.amount) || typeof group.valid !== 'boolean'
       || typeof group.editToken !== 'string' || !/^[a-f0-9]{64}$/.test(group.editToken)
       || ![...cartStates, 'INCOMPATIBLE', 'UNVERIFIED'].includes(group.state as CartState)
       || !Array.isArray(group.reasons) || !group.reasons.every(reason => typeof reason === 'string')) return false
-  const categories = new Set(group.items.map(item => item.category))
-  return categories.size === group.items.length
-    && new Set(group.items.map(item => item.productId)).size === group.items.length
-    && hardwareCategories.every(({ code }) => code === 'GPU' || categories.has(code))
-    && group.items.every(item => hardwareCategories.some(({ code }) => code === item.category)
-      && (item.category === 'MEMORY' ? item.quantity <= maxDiyMemoryQuantity : item.quantity === 1))
+  return validConfigurationMembers(group.items)
 }
 
 function isCart(value: unknown): value is Cart {
@@ -362,7 +367,13 @@ function parseOrder(value: unknown): Order {
       && Number.isSafeInteger(item.productId) && item.productId > 0
       && ['sku', 'name', 'model', 'category'].every(key => typeof item[key as keyof typeof item] === 'string')
       && Number.isSafeInteger(item.quantity) && item.quantity > 0 && item.quantity <= cartQuantity.max
-      && isMoney(item.price) && isMoney(item.amount) && item.configurationId === null)) {
+      && isMoney(item.price) && isMoney(item.amount)
+      && (item.configurationId === null || Number.isSafeInteger(item.configurationId) && item.configurationId > 0))
+    || !Array.isArray(result.configurations) || !result.configurations.every(group => group
+      && Number.isSafeInteger(group.id) && group.id > 0 && isMoney(group.amount))
+    || new Set(result.configurations.map(group => group.id)).size !== result.configurations.length
+    || result.items.some(item => item.configurationId !== null && !result.configurations.some(group => group.id === item.configurationId))
+    || !result.configurations.every(group => validConfigurationMembers(result.items.filter(item => item.configurationId === group.id)))) {
     throw new Error('订单数据格式异常，请重试核对结果。')
   }
   return result
@@ -372,9 +383,9 @@ function parseOrder(value: unknown): Order {
 async function createOrder(quote?: CheckoutPreview): Promise<boolean> {
   if (orderBusy.value) return false
   if (!orderAttempt.value) {
-    if (!quote || quote.status !== 'READY' || quote.configurations.length) return false
+    if (!quote || quote.status !== 'READY') return false
     orderAttempt.value = { input: { revision: quote.revision, itemIds: quote.items.map(item => item.id),
-      configurationIds: [], quoteToken: quote.quoteToken, requestKey: requestKey() }, uncertain: false }
+      configurationIds: quote.configurations.map(group => group.id), quoteToken: quote.quoteToken, requestKey: requestKey() }, uncertain: false }
   }
   const attempt = orderAttempt.value
   const retry = attempt.uncertain

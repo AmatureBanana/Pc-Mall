@@ -304,9 +304,8 @@ async function removeRows(all: boolean) {
         <p v-if="quote.status === 'READY'" role="status" class="auth-success">预检查通过，当前报价已确认。创建订单时仍须重新核验。</p>
       </template>
       <p class="cart-summary-note">重新核验报价不预占库存；点击“创建订单”后才会下单并预占。确认报价不锁价，价格再次变化须重新确认。</p>
-      <p v-if="quote?.configurations.length" class="cart-problem">配置组下单尚未开放，请返回购物车仅选择单品。</p>
       <template #footer><ElButton @click="closeQuote">返回购物车</ElButton><ElButton type="primary" :loading="quoteBusy" :disabled="!quote || quoteBusy || orderBusy" @click="checkQuote(true)">确认并重新核验报价</ElButton>
-        <ElButton type="primary" :loading="orderBusy" :disabled="!quote || quote.status !== 'READY' || !!quote.configurations.length || quoteBusy || orderBusy || !!orderAttempt" @click="submitOrder">创建订单</ElButton>
+        <ElButton type="primary" :loading="orderBusy" :disabled="!quote || quote.status !== 'READY' || quoteBusy || orderBusy || !!orderAttempt" @click="submitOrder">创建订单</ElButton>
         <ElButton v-if="orderAttempt?.uncertain" :loading="orderBusy" @click="createOrder()">重试确认上次下单</ElButton>
       </template>
     </ElDialog>

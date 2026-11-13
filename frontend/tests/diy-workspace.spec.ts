@@ -83,7 +83,7 @@ test('F02 workspace: arbitrary order, replacement, removal, cancelled clear and 
   await categories.getByRole('button', { name: /内存/ }).click()
   await page.getByRole('button', { name: '选择 金士顿 FURY Beast 16GB', exact: true }).click()
   await expect(configuration).toContainText('¥449.50')
-  await categories.getByRole('button', { name: /^CPU/ }).click()
+  await categories.getByRole('button', { name: /^CPU / }).click()
   await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
   await expect(configuration.getByLabel('当前参考总价')).toHaveText('¥1,948.50')
   await page.getByRole('button', { name: '选择 AMD Ryzen 7 7800X3D', exact: true }).click()
@@ -160,11 +160,11 @@ test('all eight sales units remain editable with complete core compatibility and
   const choices = [
     ['CPU', 'Intel Core i5-14600KF'], ['主板', '华硕 TUF B760M-PLUS WIFI'],
     ['显卡', 'NVIDIA GeForce RTX 4070 SUPER'], ['内存', '金士顿 FURY Beast 16GB'],
-    ['SSD', '三星 990 PRO 1TB'], ['电源', '海盗船 RM750e 全模组电源'],
-    ['机箱', '九州风神 CC560 中塔机箱'], ['独立散热器', '九州风神 AK400 风冷散热器'],
+    ['硬盘', '三星 990 PRO 1TB'], ['电源', '海盗船 RM750e 全模组电源'],
+    ['机箱', '九州风神 CC560 中塔机箱'], ['CPU散热器', '九州风神 AK400 风冷散热器'],
   ]
   for (const [category, name] of choices) {
-    await categories.getByRole('button', { name: new RegExp(`^${category}`) }).click()
+    await categories.getByRole('button', { name: new RegExp(`^${category} `) }).click()
     await page.getByRole('button', { name: `选择 ${name}`, exact: true }).click()
     await expect(configuration.getByRole('link', { name, exact: true })).toBeVisible()
     if (category === '主板') {

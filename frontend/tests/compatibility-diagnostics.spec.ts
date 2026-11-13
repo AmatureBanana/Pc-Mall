@@ -6,16 +6,16 @@ const conflicts = (page: Page) => diagnostics(page).getByRole('list', { name: '�
 
 const choices = [
   ['CPU', 'Intel Core i5-14600K'], ['主板', '华硕 TUF B760M-PLUS WIFI'],
-  ['内存', '金士顿 FURY Beast 16GB'], ['SSD', '三星 990 PRO 1TB'],
+  ['内存', '金士顿 FURY Beast 16GB'], ['硬盘', '三星 990 PRO 1TB'],
   ['电源', '海盗船 RM750e 全模组电源'], ['机箱', '九州风神 CC560 中塔机箱'],
-  ['独立散热器', '九州风神 AK400 风冷散热器'],
+  ['CPU散热器', '九州风神 AK400 风冷散热器'],
 ]
 
 async function selectAll(page: Page, skip: string[] = []) {
   const categories = page.getByRole('navigation', { name: 'DIY 硬件分类' })
   for (const [category, name] of choices) {
     if (skip.includes(category)) continue
-    await categories.getByRole('button', { name: new RegExp(`^${category}`) }).click()
+    await categories.getByRole('button', { name: new RegExp(`^${category} `) }).click()
     await page.getByRole('button', { name: `选择 ${name}`, exact: true }).click()
     if (category === 'CPU') {
       await categories.getByRole('button', { name: /^显卡 / }).click()
@@ -117,7 +117,7 @@ test('unfinished selections show a pending summary without rule rows or conflict
   await expect(diagnostics(page)).not.toContainText(/C0[1-5]|查看缺件|检测范围、版本与时间/)
   await diagnostics(page).screenshot({ path: '../docs/evidence/task-11-pending.png', animations: 'disabled' })
 
-  await page.getByRole('navigation', { name: 'DIY 硬件分类' }).getByRole('button', { name: /^CPU/ }).click()
+  await page.getByRole('navigation', { name: 'DIY 硬件分类' }).getByRole('button', { name: /^CPU / }).click()
   await page.getByRole('button', { name: '选择 Intel Core i5-14600K', exact: true }).click()
   await expect(diagnostics(page)).toContainText('尚未选齐')
   const advice = page.getByRole('region', { name: '配置修订建议' })
@@ -178,7 +178,7 @@ test('an unknown parameter is reported as unknown rather than passing', async ({
       : check)
     await route.fulfill({ response, json: body })
   })
-  await page.getByRole('navigation', { name: 'DIY 硬件分类' }).getByRole('button', { name: /^CPU/ }).click()
+  await page.getByRole('navigation', { name: 'DIY 硬件分类' }).getByRole('button', { name: /^CPU / }).click()
   await page.getByRole('button', { name: '选择 Intel Core i5-14600K', exact: true }).click()
   await page.getByRole('navigation', { name: 'DIY 硬件分类' }).getByRole('button', { name: /^显卡 / }).click()
   await page.getByRole('button', { name: '选择 CPU 核显', exact: true }).click()

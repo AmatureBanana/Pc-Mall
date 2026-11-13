@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { ElButton } from 'element-plus'
 import { useCart } from './cart'
 import { formatPrice } from './catalog'
@@ -10,6 +10,11 @@ const { order, error, loadOrder } = useCart()
 watch(() => [props.number, signedIn.value] as const, () => { if (signedIn.value) void loadOrder(props.number) }, { immediate: true })
 const time = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false })
 const states = { PENDING_PAYMENT: '待支付', PAID: '已支付', CANCELLED: '已取消', COMPLETED: '已完成' }
+const sections = computed(() => order.value ? [
+  { id: null, title: '成交单品', amount: null, items: order.value.items.filter(item => item.configurationId === null) },
+  ...order.value.configurations.map(group => ({ id: group.id, title: `成交配置组 #${group.id}`, amount: group.amount,
+    items: order.value!.items.filter(item => item.configurationId === group.id) })),
+].filter(section => section.items.length) : [])
 </script>
 
 <template>
@@ -22,10 +27,14 @@ const states = { PENDING_PAYMENT: '待支付', PAID: '已支付', CANCELLED: '�
         <h2>{{ states[order.status] }}</h2>
         <dl><dt>订单号</dt><dd>{{ order.orderNumber }}</dd><dt>创建时间</dt><dd>{{ time(order.createdAt) }}</dd>
           <dt>支付截止</dt><dd>{{ time(order.paymentDeadline) }}</dd></dl>
-        <table><thead><tr><th>商品 / SKU</th><th>型号 / 类别</th><th>单价</th><th>数量</th><th>小计</th></tr></thead>
-          <tbody><tr v-for="item in order.items" :key="item.productId"><td>{{ item.name }}<small>{{ item.sku }}</small></td>
-            <td>{{ item.model }} / {{ item.category }}</td><td>¥{{ formatPrice(item.price) }}</td><td>{{ item.quantity }}</td><td>¥{{ formatPrice(item.amount) }}</td></tr></tbody>
-        </table>
+        <section v-for="section in sections" :key="section.id ?? 'singles'" :aria-label="section.title" class="order-group">
+          <h3>{{ section.title }}</h3>
+          <table><thead><tr><th>商品 / SKU</th><th>型号 / 类别</th><th>单价</th><th>数量</th><th>小计</th></tr></thead>
+            <tbody><tr v-for="item in section.items" :key="item.productId"><td>{{ item.name }}<small>{{ item.sku }}</small></td>
+              <td>{{ item.model }} / {{ item.category }}</td><td>¥{{ formatPrice(item.price) }}</td><td>{{ item.quantity }}</td><td>¥{{ formatPrice(item.amount) }}</td></tr></tbody>
+          </table>
+          <p v-if="section.amount">组成交小计：¥{{ formatPrice(section.amount) }}</p>
+        </section>
         <p>成交总额（CNY）：<strong aria-label="订单成交总额">¥{{ formatPrice(order.total) }}</strong></p>
         <p>已预占本单库存。模拟支付功能尚未开放。</p>
       </section>
@@ -39,6 +48,7 @@ const states = { PENDING_PAYMENT: '待支付', PAID: '已支付', CANCELLED: '�
 <style scoped>
 .order-result { padding-block: 28px; }
 section { padding: 24px; margin-block: 20px; border: 1px solid #e0e8f7; border-radius: 15px; background: white; }
+.order-group { padding: 16px; }
 dl { display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; }
 dd { margin: 0; overflow-wrap: anywhere; }
 table { width: 100%; border-collapse: collapse; margin-block: 24px; text-align: left; }

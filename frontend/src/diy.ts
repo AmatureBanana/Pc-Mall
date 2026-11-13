@@ -4,7 +4,7 @@ export const hardwareCategories = categories.filter(category => category.code !=
 export type HardwareCategory = typeof hardwareCategories[number]['code']
 export const hardwareLabels: Record<HardwareCategory, string> = {
   CPU: 'CPU', MOTHERBOARD: '主板', GPU: '显卡', MEMORY: '内存',
-  SSD: 'SSD 固态硬盘', PSU: '电源', CASE: '机箱', COOLER: 'CPU 散热器',
+  SSD: '硬盘', PSU: '电源', CASE: '机箱', COOLER: 'CPU 散热器',
 }
 export interface Selection { category: HardwareCategory; productId: number; source: 'DIY' }
 export interface Workspace { version: 1; revision: number; selections: Selection[]; integratedGraphicsCpuId?: number; memoryQuantity?: number }
