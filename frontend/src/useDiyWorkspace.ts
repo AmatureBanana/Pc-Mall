@@ -14,7 +14,7 @@ export type RestorationState =
   | { phase: 'error'; revision: number; error: string }
   | { phase: 'superseded'; revision: number }
 
-export function useDiyWorkspace() {
+export function useDiyWorkspace(isEditing: () => boolean) {
   const restored = restoreWorkspace()
   const workspace = ref(restored.workspace)
   const storageWarning = ref(restored.warning)
@@ -31,7 +31,7 @@ export function useDiyWorkspace() {
       ...(memoryQuantity > 1 && selections.some(item => item.category === 'MEMORY') ? { memoryQuantity } : {}),
       ...(integratedGraphicsCpuId && cpu?.productId === integratedGraphicsCpuId && !selections.some(item => item.category === 'GPU')
         ? { integratedGraphicsCpuId } : {}) }
-    storageWarning.value = saveWorkspace(workspace.value)
+    if (!isEditing()) storageWarning.value = saveWorkspace(workspace.value)
     void quotation.refresh()
     void compatibility.refresh()
   }

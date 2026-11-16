@@ -183,6 +183,7 @@ onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.
     <template v-else><button @click="openAuth('login')">登录</button><button @click="openAuth('register')">注册</button></template>
     <button v-if="user?.role === 'ADMIN'" @click="navigate('admin')">管理后台</button>
     <button v-if="user" @click="navigate('profile')">个人资料</button>
+    <button v-if="user" @click="navigate('orders')">我的订单</button>
     <button v-if="user" :disabled="busy || profileBusy" @click="logout">退出登录</button>
     <span v-if="sessionError" role="alert" class="account-session-error">{{ sessionError }} <button @click="checkSession">重试</button></span>
     <span v-else-if="notice && !authOpen" role="status">{{ notice }}</span>

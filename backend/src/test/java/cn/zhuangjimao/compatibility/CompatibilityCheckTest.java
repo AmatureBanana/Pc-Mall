@@ -36,6 +36,20 @@ class CompatibilityCheckTest {
     @Autowired JdbcTemplate db;
 
     @Test
+    void ryzen7800x3dIntegratedBuildHasVerifiedPowerAndCanPassCoreChecks() throws Exception {
+        JsonNode minimal = json.readTree(check("{\"revision\":1,\"CPU\":2,\"PSU\":11}").body()).path("data");
+        assertThat(rule(minimal, "C08").path("state").asText()).isEqualTo("PASS");
+        assertThat(rule(minimal, "C08").path("message").asText()).contains("315 W");
+        long memory = db.queryForObject("SELECT id FROM products WHERE sku='KINGSTON-KF560C36BBE2-16'", Long.class);
+        String config = COMPLETE.replace("\"GPU\":5,", "\"integratedGraphicsCpuId\":2,")
+                .replace("\"CPU\":1", "\"CPU\":2").replace("\"MOTHERBOARD\":3", "\"MOTHERBOARD\":4")
+                .replace("\"MEMORY\":7", "\"MEMORY\":" + memory);
+        JsonNode data = json.readTree(check(config).body()).path("data");
+        assertThat(rule(data, "C08").path("state").asText()).as(data.toPrettyString()).isEqualTo("PASS");
+        assertThat(data.path("corePassed").asBoolean()).isTrue();
+    }
+
+    @Test
     void requestedMemoryModulesMustFitVerifiedBoardSlots() throws Exception {
         long board = cloneProduct(3);
         long memory = db.queryForObject("SELECT id FROM products WHERE sku='KINGSTON-KF560C36BBE2-16'", Long.class);

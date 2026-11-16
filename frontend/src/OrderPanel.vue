@@ -1,18 +1,25 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import { ElButton } from 'element-plus'
-import { useCart } from './cart'
+import { computed, ref, watch } from 'vue'
+import { ElButton, ElDialog } from 'element-plus'
+import { orderStates, useCart } from './cart'
 import { formatPrice } from './catalog'
 import { signedIn } from './auth'
 
 const props = defineProps<{ number: string }>()
-const { order, error, loadOrder } = useCart()
-watch(() => [props.number, signedIn.value] as const, () => { if (signedIn.value) void loadOrder(props.number) }, { immediate: true })
+const { order, error, loadOrder, paymentBusy, payOrder } = useCart()
+const paymentOpen = ref(false)
+watch(() => [props.number, signedIn.value] as const, () => {
+  paymentOpen.value = false
+  if (signedIn.value) void loadOrder(props.number)
+}, { immediate: true })
+async function confirmPayment() {
+  const number = props.number
+  if (await payOrder(number) && props.number === number) paymentOpen.value = false
+}
 const time = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false })
-const states = { PENDING_PAYMENT: '待支付', PAID: '已支付', CANCELLED: '已取消', COMPLETED: '已完成' }
 const sections = computed(() => order.value ? [
   { id: null, title: '成交单品', amount: null, items: order.value.items.filter(item => item.configurationId === null) },
-  ...order.value.configurations.map(group => ({ id: group.id, title: `成交配置组 #${group.id}`, amount: group.amount,
+  ...order.value.configurations.map(group => ({ id: group.id, title: '成交配置组', amount: group.amount,
     items: order.value!.items.filter(item => item.configurationId === group.id) })),
 ].filter(section => section.items.length) : [])
 </script>
@@ -22,11 +29,12 @@ const sections = computed(() => order.value ? [
     <h1>订单结果</h1>
     <p v-if="!signedIn">请先登录查看本人订单。<a href="#login">前往登录</a></p>
     <template v-else>
-      <p v-if="error" role="alert" class="auth-error">{{ error }}</p>
+      <p v-if="error && !paymentOpen" role="alert" class="auth-error">{{ error }}</p>
       <section v-if="order && order.orderNumber === number" aria-label="成交快照">
-        <h2>{{ states[order.status] }}</h2>
+        <h2>{{ orderStates[order.status] }}</h2>
         <dl><dt>订单号</dt><dd>{{ order.orderNumber }}</dd><dt>创建时间</dt><dd>{{ time(order.createdAt) }}</dd>
-          <dt>支付截止</dt><dd>{{ time(order.paymentDeadline) }}</dd></dl>
+          <dt>支付截止</dt><dd>{{ time(order.paymentDeadline) }}</dd>
+          <template v-if="order.paidAt"><dt>支付时间</dt><dd>{{ time(order.paidAt) }}</dd></template></dl>
         <section v-for="section in sections" :key="section.id ?? 'singles'" :aria-label="section.title" class="order-group">
           <h3>{{ section.title }}</h3>
           <table><thead><tr><th>商品 / SKU</th><th>型号 / 类别</th><th>单价</th><th>数量</th><th>小计</th></tr></thead>
@@ -36,12 +44,26 @@ const sections = computed(() => order.value ? [
           <p v-if="section.amount">组成交小计：¥{{ formatPrice(section.amount) }}</p>
         </section>
         <p>成交总额（CNY）：<strong aria-label="订单成交总额">¥{{ formatPrice(order.total) }}</strong></p>
-        <p>已预占本单库存。模拟支付功能尚未开放。</p>
+        <template v-if="order.status === 'PENDING_PAYMENT'">
+          <p>已预占本单库存。仅支付截止前可模拟支付，截止以服务端判定为准。</p>
+          <ElButton type="primary" :loading="paymentBusy" @click="paymentOpen = true">模拟支付</ElButton>
+        </template>
       </section>
       <p v-else-if="!error" role="status">正在读取订单…</p>
-      <ElButton @click="loadOrder(number)">重新读取订单</ElButton>
+      <ElButton :disabled="paymentBusy" @click="loadOrder(number)">重新读取订单</ElButton>
     </template>
-    <a href="#cart">返回购物车</a>
+    <a href="#orders">返回我的订单</a><a href="#cart">返回购物车</a>
+    <ElDialog v-model="paymentOpen" title="确认模拟支付" width="min(480px, 94vw)" :close-on-click-modal="!paymentBusy"
+      :close-on-press-escape="!paymentBusy" :show-close="!paymentBusy">
+      <template v-if="order && order.orderNumber === number">
+        <p>本次为站内模拟支付。</p><p>订单：{{ order.orderNumber }}</p>
+        <p>成交金额（CNY）：<strong>¥{{ formatPrice(order.total) }}</strong></p>
+      </template>
+      <p v-if="error" role="alert" class="auth-error">{{ error }}</p>
+      <a v-if="!order && error" href="#login" @click="paymentOpen = false">前往登录</a>
+      <template #footer><ElButton :disabled="paymentBusy" @click="paymentOpen = false">返回订单</ElButton>
+        <ElButton type="primary" :loading="paymentBusy" :disabled="!order || order.orderNumber !== number || order.status !== 'PENDING_PAYMENT'" @click="confirmPayment">确认模拟支付</ElButton></template>
+    </ElDialog>
   </main>
 </template>
 

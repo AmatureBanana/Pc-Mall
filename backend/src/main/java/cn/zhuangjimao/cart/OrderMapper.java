@@ -31,12 +31,24 @@ interface OrderMapper {
     @Select("SELECT configuration_id AS id,amount FROM order_configuration WHERE order_number=#{number} ORDER BY configuration_id")
     List<SingleItemOrders.Configuration> configurations(String number);
 
-    @Select("SELECT order_number,status,currency,total,created_at,payment_deadline FROM mall_order WHERE account_id=#{accountId} AND order_number=#{number}")
+    @Select("SELECT order_number,status,currency,total,created_at,payment_deadline,paid_at FROM mall_order WHERE account_id=#{accountId} AND order_number=#{number}")
     Header order(long accountId, String number);
+
+    @Select("SELECT COUNT(*) FROM mall_order WHERE account_id=#{accountId}")
+    long count(long accountId);
+
+    @Select("SELECT order_number,status,currency,total,created_at,payment_deadline,paid_at FROM mall_order WHERE account_id=#{accountId} ORDER BY created_at DESC,order_number DESC LIMIT 20 OFFSET #{offset}")
+    List<Header> history(long accountId, long offset);
+
+    @Select("SELECT order_number,status,currency,total,created_at,payment_deadline,paid_at FROM mall_order WHERE account_id=#{accountId} AND order_number=#{number} FOR UPDATE")
+    Header lockOrder(long accountId, String number);
+
+    @Update("UPDATE mall_order SET status='PAID',paid_at=#{now} WHERE account_id=#{accountId} AND order_number=#{number} AND status='PENDING_PAYMENT' AND payment_deadline>#{now}")
+    int pay(long accountId, String number, LocalDateTime now);
 
     @Select("SELECT product_id,sku,name,model,category,price,quantity,amount,configuration_id FROM order_item WHERE order_number=#{number} ORDER BY id")
     List<SingleItemOrders.Item> items(String number);
 
     record RequestRow(String fingerprint, String orderNumber) {}
-    record Header(String orderNumber, String status, String currency, BigDecimal total, LocalDateTime createdAt, LocalDateTime paymentDeadline) {}
+    record Header(String orderNumber, String status, String currency, BigDecimal total, LocalDateTime createdAt, LocalDateTime paymentDeadline, LocalDateTime paidAt) {}
 }

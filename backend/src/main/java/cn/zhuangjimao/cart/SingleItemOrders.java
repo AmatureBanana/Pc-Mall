@@ -92,7 +92,36 @@ public class SingleItemOrders {
         var order = orders.order(accountId, number);
         if (order == null) throw new CartException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "订单不存在。");
         return new View(order.orderNumber(), order.status(), order.currency(), order.total(),
-                order.createdAt().toInstant(ZoneOffset.UTC), order.paymentDeadline().toInstant(ZoneOffset.UTC), orders.items(number), orders.configurations(number));
+                order.createdAt().toInstant(ZoneOffset.UTC), order.paymentDeadline().toInstant(ZoneOffset.UTC),
+                order.paidAt() == null ? null : order.paidAt().toInstant(ZoneOffset.UTC), orders.items(number), orders.configurations(number));
+    }
+
+    /** Serialize lifecycle requests on the order; payment never changes inventory. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public View pay(long accountId, String number) {
+        var order = orders.lockOrder(accountId, number);
+        if (order == null) throw new CartException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "订单不存在。");
+        if (order.status().equals("PAID")) return view(accountId, number);
+        if (!order.status().equals("PENDING_PAYMENT")) {
+            throw new CartException(HttpStatus.CONFLICT, "ORDER_NOT_PAYABLE", "当前订单状态不允许支付。");
+        }
+        // Read time after waiting for the lock. Equality is already past the payment cutoff.
+        var now = clock.instant();
+        if (!now.isBefore(order.paymentDeadline().toInstant(ZoneOffset.UTC))) {
+            throw new CartException(HttpStatus.CONFLICT, "ORDER_PAYMENT_EXPIRED", "订单已到支付截止时间，无法支付。");
+        }
+        var paidAt = LocalDateTime.ofInstant(now.truncatedTo(ChronoUnit.MICROS), ZoneOffset.UTC);
+        if (orders.pay(accountId, number, paidAt) != 1) throw new IllegalStateException("Order changed under its lock");
+        return view(accountId, number);
+    }
+
+    @Transactional(readOnly = true)
+    public History history(long accountId, int page) {
+        if (page < 1) throw new CartException(HttpStatus.BAD_REQUEST, "INVALID_ORDER_QUERY", "订单页码须为正整数。");
+        var items = orders.history(accountId, (page - 1L) * 20).stream().map(order -> new Summary(
+                order.orderNumber(), order.status(), order.currency(), order.total(), order.createdAt().toInstant(ZoneOffset.UTC),
+                order.paymentDeadline().toInstant(ZoneOffset.UTC), order.paidAt() == null ? null : order.paidAt().toInstant(ZoneOffset.UTC))).toList();
+        return new History(items, page, 20, orders.count(accountId));
     }
 
     private static String digest(String value) {
@@ -102,8 +131,12 @@ public class SingleItemOrders {
     private static void invalid(String message) { throw new CartException(HttpStatus.BAD_REQUEST, "INVALID_ORDER_INPUT", message); }
 
     record View(String orderNumber, String status, String currency, @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal total,
-                Instant createdAt, Instant paymentDeadline, List<Item> items, List<Configuration> configurations) {}
+                Instant createdAt, Instant paymentDeadline, @JsonInclude(JsonInclude.Include.ALWAYS) Instant paidAt,
+                List<Item> items, List<Configuration> configurations) {}
     record Configuration(long id, @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal amount) {}
+    record History(List<Summary> items, int page, int pageSize, long total) {}
+    record Summary(String orderNumber, String status, String currency, @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal total,
+                   Instant createdAt, Instant paymentDeadline, @JsonInclude(JsonInclude.Include.ALWAYS) Instant paidAt) {}
     @JsonInclude(JsonInclude.Include.ALWAYS)
     record Item(long productId, String sku, String name, String model, String category,
                 @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal price, int quantity,

@@ -135,6 +135,7 @@ test('a lost successful response keeps the outcome uncertain and retry creates n
   await expect(confirmation(page).getByRole('alert')).toContainText('结果暂未确认')
   await expect(page.getByText('装机方案已加入购物车', { exact: true })).toHaveCount(0)
   expect((await (await page.request.get('/api/cart')).json()).data.configurations).toHaveLength(1)
+  expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!))).toEqual(original)
   await confirmation(page).getByRole('button', { name: '确定', exact: true }).click()
   await expect(confirmation(page)).not.toBeVisible()
   expect(submissions).toHaveLength(2)
@@ -142,7 +143,7 @@ test('a lost successful response keeps the outcome uncertain and retry creates n
   const persisted = (await (await page.request.get('/api/cart')).json()).data
   expect(persisted.configurations).toHaveLength(1)
   expect(persisted.configurations[0].items).toHaveLength(8)
-  expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!))).toEqual(original)
+  expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!))).toMatchObject({ version: 1, selections: [] })
 })
 
 test('stock invalidated after confirmation opens refuses the whole build and preserves the workspace', async ({ page }) => {

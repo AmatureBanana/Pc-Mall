@@ -21,11 +21,14 @@ export interface CheckoutPreview {
 }
 export interface Order {
   orderNumber: string; status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'COMPLETED'; currency: 'CNY'
-  total: string; createdAt: string; paymentDeadline: string
+  total: string; createdAt: string; paymentDeadline: string; paidAt: string | null
   items: { productId: number; sku: string; name: string; model: string; category: string; price: string
     quantity: number; amount: string; configurationId: number | null }[]
   configurations: { id: number; amount: string }[]
 }
+export type OrderSummary = Omit<Order, 'items' | 'configurations'>
+export interface OrderHistory { items: OrderSummary[]; page: number; pageSize: number; total: number }
+export const orderStates = { PENDING_PAYMENT: '待支付', PAID: '已支付', CANCELLED: '已取消', COMPLETED: '已完成' }
 /**
  * The per-line cart quantity bound, mirroring the server rule and the V19 check constraint.
  * It bounds a single-item line, independently of aggregate stock demand.
@@ -117,6 +120,9 @@ type OrderInput = { revision: number; itemIds: number[]; configurationIds: numbe
 const orderAttempt = ref<{ input: OrderInput; uncertain: boolean } | null>(null)
 const orderBusy = ref(false)
 const order = ref<Order | null>(null)
+const orderHistory = ref<OrderHistory | null>(null)
+const historyLoading = ref(false)
+const paymentBusy = ref(false)
 const editing = ref<{ id: number; revision: number; editToken: string; workspace: Workspace; previousWorkspace?: Workspace } | null>(null)
 type Scope = { identity: number; order: number; signal: AbortSignal }
 type AddAttempt = { key: string; inflight: Promise<boolean> | null }
@@ -141,6 +147,8 @@ function clear() {
   orderAttempt.value = null
   orderBusy.value = false
   order.value = null
+  orderHistory.value = null
+  historyLoading.value = paymentBusy.value = false
   finishEdit()
   acceptedOrder = latestAction = 0
   cart.value = null
@@ -169,7 +177,7 @@ function failure(request: Scope, cause: unknown, fallback: string) {
   if (!current(request) || request.order !== latestAction) return
   if (cause instanceof AuthError && cause.status === 401) {
     clear()
-    error.value = '登录已过期或尚未登录，请重新登录后使用购物车。'
+    error.value = '登录已过期或尚未登录，请重新登录后继续操作。'
   } else error.value = cause instanceof Error ? cause.message : fallback
 }
 
@@ -358,11 +366,18 @@ async function checkoutPreview(itemIds: number[], configurationIds: number[], qu
 const count = computed(() => cart.value
   ? cart.value.items.reduce((sum, item) => sum + item.quantity, cart.value.configurations.length) : 0)
 
+function isOrderSummary(value: unknown): value is OrderSummary {
+  const result = value as OrderSummary | null
+  return !!result && typeof result.orderNumber === 'string' && /^O[a-f0-9]{32}$/.test(result.orderNumber)
+    && ['PENDING_PAYMENT', 'PAID', 'CANCELLED', 'COMPLETED'].includes(result.status) && result.currency === 'CNY'
+    && isMoney(result.total) && typeof result.createdAt === 'string' && Number.isFinite(Date.parse(result.createdAt))
+    && typeof result.paymentDeadline === 'string' && Number.isFinite(Date.parse(result.paymentDeadline))
+    && (result.paidAt === null || typeof result.paidAt === 'string' && Number.isFinite(Date.parse(result.paidAt)))
+}
+
 function parseOrder(value: unknown): Order {
   const result = value as Order | null
-  if (!result || typeof result.orderNumber !== 'string' || !/^O[a-f0-9]{32}$/.test(result.orderNumber)
-    || !['PENDING_PAYMENT', 'PAID', 'CANCELLED', 'COMPLETED'].includes(result.status) || result.currency !== 'CNY'
-    || !isMoney(result.total) || !Number.isFinite(Date.parse(result.createdAt)) || !Number.isFinite(Date.parse(result.paymentDeadline))
+  if (!isOrderSummary(result)
     || !Array.isArray(result.items) || result.items.length === 0 || !result.items.every(item => item
       && Number.isSafeInteger(item.productId) && item.productId > 0
       && ['sku', 'name', 'model', 'category'].every(key => typeof item[key as keyof typeof item] === 'string')
@@ -417,12 +432,46 @@ async function loadOrder(number: string): Promise<void> {
   order.value = null
   try {
     const result = parseOrder(await request(`/api/orders/${encodeURIComponent(number)}`, { signal: operation.signal }))
+    if (result.orderNumber !== number) throw new Error('订单数据不匹配，请重试核对结果。')
     if (current(operation) && operation.order === latestAction) order.value = result
   } catch (cause) { failure(operation, cause, '订单暂时无法读取，请重试。') }
+}
+
+async function loadOrders(page = 1): Promise<void> {
+  const operation = beginAction()
+  orderHistory.value = null
+  historyLoading.value = true
+  try {
+    const result = await request(`/api/orders?page=${page}`, { signal: operation.signal }) as OrderHistory | null
+    if (!result || !Array.isArray(result.items) || !result.items.every(isOrderSummary) || result.items.length > 20
+      || result.page !== page || result.pageSize !== 20 || !Number.isSafeInteger(result.total) || result.total < 0) {
+      throw new Error('订单列表格式异常，请重试。')
+    }
+    if (current(operation) && operation.order === latestAction) orderHistory.value = result
+  } catch (cause) { failure(operation, cause, '订单列表暂时无法读取，请重试。') }
+  finally { if (current(operation) && operation.order === latestAction) historyLoading.value = false }
+}
+
+async function payOrder(number: string): Promise<boolean> {
+  if (paymentBusy.value) return false
+  const operation = beginAction()
+  paymentBusy.value = true
+  try {
+    const result = parseOrder(await write(`/api/orders/${encodeURIComponent(number)}/pay`, {}, 'POST', operation.signal))
+    if (result.orderNumber !== number || result.status !== 'PAID' || result.paidAt === null) throw new Error('支付结果格式异常。')
+    if (!current(operation) || operation.order !== latestAction) return false
+    order.value = result
+    return true
+  } catch (cause) {
+    const refused = cause instanceof AuthError && cause.status >= 400 && cause.status < 500
+    failure(operation, refused ? cause : new Error('支付结果暂未确认，请重新读取订单或重试模拟支付，核对同一笔订单。'), '支付未完成，请重试。')
+    return false
+  } finally { if (current(operation)) paymentBusy.value = false }
 }
 
 export function useCart() {
   const refresh = () => refreshCart()
   return { cart, loading, error, notice, count, refresh, clear, add, update, remove, addConfiguration, removeConfiguration,
-    editing, startEdit, cancelEdit, replaceConfiguration, checkoutPreview, orderAttempt, orderBusy, createOrder, order, loadOrder }
+    editing, startEdit, cancelEdit, leaveEdit: finishEdit, replaceConfiguration, checkoutPreview, orderAttempt, orderBusy, createOrder, order, loadOrder,
+    orderHistory, historyLoading, loadOrders, paymentBusy, payOrder }
 }

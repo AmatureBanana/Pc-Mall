@@ -1,5 +1,26 @@
 import { expect, test } from '@playwright/test'
 
+test('7800X3D integrated build has verified power and can enter cart confirmation', async ({ page }) => {
+  await page.goto('/')
+  const products = (await (await page.request.get('/api/products')).json()).data as { id: number; sku: string }[]
+  const memory = products.find(item => item.sku === 'KINGSTON-KF560C36BBE2-16')!.id
+  await page.evaluate(memoryId => sessionStorage.setItem('pc-mall.diy.workspace.v1', JSON.stringify({
+    version: 1, revision: 29, integratedGraphicsCpuId: 2,
+    selections: Object.entries({ CPU: 2, MOTHERBOARD: 4, MEMORY: memoryId, COOLER: 8, SSD: 9, PSU: 11, CASE: 12 })
+      .map(([category, productId]) => ({ category, productId, source: 'DIY' })),
+  })), memory)
+  await page.getByRole('link', { name: 'DIY 装机', exact: true }).click()
+  const configuration = page.getByRole('region', { name: '当前配置' })
+  await expect(configuration).toContainText('核显 · AMD Radeon Graphics')
+  await expect(configuration.getByText('核心检测通过', { exact: true })).toBeVisible()
+  await expect(configuration).not.toContainText('存在未知参数')
+  await configuration.getByRole('button', { name: '转入购物车', exact: true }).click()
+  const confirmation = page.getByRole('dialog', { name: '转入购物车' })
+  await expect(confirmation).toContainText('AMD Ryzen 7 7800X3D')
+  await expect(confirmation.getByRole('button', { name: '前往登录', exact: true })).toBeEnabled()
+  await page.screenshot({ path: test.info().outputPath('amd-integrated-power-verified.png'), fullPage: true, animations: 'disabled' })
+})
+
 test('CPU integrated graphics stays first, replaces a discrete card for free and restores on reload', async ({ page, request }) => {
   await page.goto('/#diy')
   await page.getByRole('button', { name: '选择 Intel Core i5-14600K', exact: true }).click()
