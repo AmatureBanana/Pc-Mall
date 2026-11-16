@@ -101,12 +101,17 @@ test('mixed server quote reconfirms a concurrent price change and unselected inv
     expect((await write(page.request, path, { selections: original.selections.map(({ category, productId }) => ({ category, productId })) })).status()).toBe(200)
     expect((await write(page.request, '/api/cart/items', { productId: id, quantity: 2, requestKey: `preview-${Date.now()}` })).status()).toBe(200)
     await page.getByRole('button', { name: /^购物车/ }).click()
-    await cartPage(page).getByRole('button', { name: '预结算', exact: true }).click()
-    const dialog = page.getByRole('dialog', { name: '确认当前报价' })
-    await expect(dialog.getByLabel('服务端选中总额')).toHaveText('¥10,302.50')
-    const detail = (await (await admin.get(productPath)).json()).data
-    expect((await write(admin, `${productPath}/price`, { revision: detail.product.revision, price: '100.01', reason: '报价二次变化验收' })).status()).toBe(200)
-    await dialog.getByRole('button', { name: '确认并重新核验报价' }).click()
+    let changedDuringConfirmation = false
+    await page.route('**/api/cart/checkout-preview', async route => {
+      if (route.request().postDataJSON().quoteToken && !changedDuringConfirmation) {
+        changedDuringConfirmation = true
+        const detail = (await (await admin.get(productPath)).json()).data
+        expect((await write(admin, `${productPath}/price`, { revision: detail.product.revision, price: '100.01', reason: '报价二次变化验收' })).status()).toBe(200)
+      }
+      await route.continue()
+    })
+    await cartPage(page).getByRole('button', { name: '结算订单', exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: '创建订单' })
     await expect(dialog.getByRole('alert')).toContainText('发生变化')
     await expect(dialog).toContainText('100.00 → ¥100.01')
     await expect(dialog.getByLabel('服务端选中总额')).toHaveText('¥10,302.52')
@@ -118,10 +123,12 @@ test('mixed server quote reconfirms a concurrent price change and unselected inv
     await cartPage(page).getByRole('button', { name: '刷新价格与库存' }).click()
     await expect(cartPage(page).getByText('商品暂时缺货，数量已保留。')).toBeVisible()
     await cartPage(page).getByRole('checkbox', { name: '选中 预结算测试电源', exact: true }).uncheck()
-    await cartPage(page).getByRole('button', { name: '预结算', exact: true }).click()
+    // Keep this preview test read-only for shared catalog fixtures after automatic confirmation.
+    await page.route('**/api/orders', route => route.fulfill({ status: 503,
+      json: { code: 'CART_UNAVAILABLE', message: '预结算测试阻止实际下单' } }))
+    await cartPage(page).getByRole('button', { name: '结算订单', exact: true }).click()
     await expect(dialog.getByLabel('服务端选中总额')).toHaveText('¥10,102.50')
-    await dialog.getByRole('button', { name: '确认并重新核验报价' }).click()
-    await expect(dialog.getByRole('status')).toContainText('预检查通过')
+    await expect(dialog.getByRole('alert')).toContainText('下单结果暂未确认')
     expect((await (await page.request.get('/api/cart')).json()).data.lineCount).toBe(2)
     expect((await (await admin.get(productPath)).json()).data.product.stock).toBe(0)
   } finally {
@@ -158,7 +165,7 @@ test('a concurrent cart write refuses the stale DIY editor and preserves the old
 })
 
 
-test('editing survives storefront navigation and cancellation restores the prior independent DIY workspace', async ({ page }) => {
+test('header DIY navigation exits group editing and restores the independent workspace', async ({ page }) => {
   const original = await signedInWorkspace(page)
   await page.getByRole('button', { name: '替换 内存', exact: true }).click()
   await page.getByRole('button', { name: '增加内存数量', exact: true }).click()
@@ -174,13 +181,13 @@ test('editing survives storefront navigation and cancellation restores the prior
   await expect(page.getByLabel('当前内存根数')).toHaveText('2')
   await page.getByRole('button', { name: '增加内存数量', exact: true }).click()
   await expect(page.getByLabel('当前内存根数')).toHaveText('3')
+  expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!).memoryQuantity)).toBe(2)
   await page.getByRole('link', { name: '商品浏览', exact: true }).click()
   await expect(page.getByRole('region', { name: '商品列表', exact: true })).toBeVisible()
   await page.getByRole('link', { name: 'DIY 装机', exact: true }).click()
   await page.getByRole('button', { name: '替换 内存', exact: true }).click()
-  await expect(page.getByLabel('当前内存根数')).toHaveText('3')
-  await page.getByRole('button', { name: '取消整组编辑' }).click()
-  await expect(cartPage(page)).toBeVisible()
+  await expect(page.getByLabel('当前内存根数')).toHaveText('2')
+  await expect(page.getByRole('button', { name: '取消整组编辑' })).toHaveCount(0)
   expect((await (await page.request.get('/api/cart')).json()).data).toEqual(before)
   expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!).memoryQuantity)).toBe(2)
 })

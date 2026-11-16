@@ -16,6 +16,11 @@ class OrderController {
     private final SingleItemOrders orders;
     OrderController(SingleItemOrders orders) { this.orders = orders; }
 
+    @GetMapping
+    ResponseEntity<HistoryResponse> history(@AuthenticationPrincipal AccountPrincipal principal, @RequestParam(defaultValue="1") int page) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new HistoryResponse(orders.history(principal.ownerId(), page)));
+    }
+
     @PostMapping
     ResponseEntity<Response> create(@AuthenticationPrincipal AccountPrincipal principal, @RequestBody String body) {
         JsonNode input;
@@ -37,6 +42,20 @@ class OrderController {
         return answer(orders.view(principal.ownerId(), number));
     }
 
+    @PostMapping("/{number}/pay")
+    ResponseEntity<Response> pay(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable String number,
+                                 @RequestBody(required = false) String body) {
+        if (body != null && !body.isBlank()) {
+            try (var parser = STRICT.createParser(body)) {
+                JsonNode input = STRICT.readTree(parser);
+                if (input == null || !input.isObject() || !input.isEmpty() || parser.nextToken() != null) invalidPayment();
+            } catch (java.io.IOException error) { invalidPayment(); }
+        }
+        return answer(orders.pay(principal.ownerId(), number));
+    }
+
+    private static void invalidPayment() { throw new CartException(HttpStatus.BAD_REQUEST, "INVALID_PAYMENT_INPUT", "模拟支付不接受客户端金额、状态、时间或用户字段。"); }
+
     private static Set<Long> ids(JsonNode input, String name) {
         var value = input.get(name);
         if (value == null || !value.isArray()) invalid();
@@ -56,4 +75,5 @@ class OrderController {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Response(order));
     }
     record Response(SingleItemOrders.View data) {}
+    record HistoryResponse(SingleItemOrders.History data) {}
 }

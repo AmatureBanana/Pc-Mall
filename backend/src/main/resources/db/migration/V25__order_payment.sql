@@ -1,0 +1,1 @@
+ALTER TABLE mall_order ADD COLUMN paid_at DATETIME(6) NULL;

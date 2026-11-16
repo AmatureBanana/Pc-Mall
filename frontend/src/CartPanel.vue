@@ -17,6 +17,7 @@ const bulkRemoving = ref(false)
 const quote = ref<CheckoutPreview | null>(null)
 const quoteOpen = ref(false)
 const quoteBusy = ref(false)
+const directCheckout = ref(false)
 const priceChanges = ref<string[]>([])
 let quoteAttempt = 0
 const itemKey = (id: number) => `item:${id}`
@@ -78,7 +79,8 @@ watch([cart, () => [...selected.value].sort().join(',')], () => {
 onUnmounted(() => { quoteAttempt++ })
 
 async function checkQuote(confirm = false) {
-  if (quoteBusy.value || !cart.value) return
+  if (quoteBusy.value || orderBusy.value || !cart.value) return
+  directCheckout.value = !confirm
   const attempt = ++quoteAttempt
   const previous = confirm ? quote.value : null
   const before = previous ?? cart.value
@@ -87,15 +89,24 @@ async function checkQuote(confirm = false) {
   quoteOpen.value = true
   quoteBusy.value = true
   try {
-    const result = await checkoutPreview(items.value.filter(item => selected.value.has(itemKey(item.id))).map(item => item.id),
-      groups.value.filter(group => selected.value.has(groupKey(group.id))).map(group => group.id), previous?.quoteToken)
+    const itemIds = items.value.filter(item => selected.value.has(itemKey(item.id))).map(item => item.id)
+    const groupIds = groups.value.filter(group => selected.value.has(groupKey(group.id))).map(group => group.id)
+    let result = await checkoutPreview(itemIds, groupIds, previous?.quoteToken)
+    if (attempt !== quoteAttempt || !quoteOpen.value) return
+    if (!confirm && result?.status === 'CONFIRMATION_REQUIRED') {
+      result = await checkoutPreview(itemIds, groupIds, result.quoteToken)
+    }
     if (attempt !== quoteAttempt || !quoteOpen.value) return
     if (!result) { quote.value = null; return }
     priceChanges.value = [...new Map([...result.items, ...result.configurations.flatMap(group => group.items)]
       .filter(item => seen.has(item.productId) && seen.get(item.productId) !== item.price)
       .map(item => [item.productId, `${item.name}：¥${seen.get(item.productId)} → ¥${item.price}`])).values()]
     quote.value = result
-  } finally { if (attempt === quoteAttempt) quoteBusy.value = false }
+    if (!confirm && result.status === 'READY' && !priceChanges.value.length && !orderAttempt.value) {
+      const current = quote.value
+      if (!await createOrder(current) && quote.value === current) quote.value = { ...current, status: 'CONFIRMATION_REQUIRED' }
+    }
+  } finally { if (attempt === quoteAttempt) { quoteBusy.value = false; directCheckout.value = false } }
 }
 async function submitOrder() {
   if (quoteBusy.value || orderBusy.value || !quote.value) return
@@ -282,12 +293,13 @@ async function removeRows(all: boolean) {
           <div class="cart-summary-total"><dt>选中参考合计</dt><dd aria-label="选中参考合计">{{ money(itemTotal + groupTotal) }}</dd></div>
         </dl>
         <p v-if="invalidSelected" class="cart-problem">{{ invalidSelected }} 项当前不可售，未计入合计。</p>
-        <ElButton class="cart-checkout" type="primary" :disabled="!selected.size || loading || operationBusy || quoteBusy" @click="checkQuote()"><HardwareIcon name="card"/>预结算</ElButton>
-        <p class="cart-summary-note">按选中项重新核验库存和整组兼容性。参考金额不锁价、不预占库存。</p>
+        <ElButton class="cart-checkout" type="primary" :disabled="!selected.size || loading || operationBusy || quoteBusy || orderBusy" @click="checkQuote()"><HardwareIcon name="card"/>结算订单</ElButton>
+        <p class="cart-summary-note">点击后自动核验选中项，创建待支付订单并预占库存，随后进入订单结果页。</p>
         <button type="button" class="cart-text-button" :disabled="loading || operationBusy" @click="refresh">刷新价格与库存</button>
       </aside>
     </div>
-    <ElDialog v-model="quoteOpen" title="确认当前报价" width="min(720px, calc(100vw - 32px))" align-center
+    <p v-if="directCheckout && quoteBusy" role="status">正在核验并创建订单…</p>
+    <ElDialog v-if="!directCheckout" v-model="quoteOpen" title="创建订单" width="min(720px, calc(100vw - 32px))" align-center
       :close-on-click-modal="false" @close="closeQuote">
       <p v-if="error" role="alert" class="auth-error">{{ error }}</p>
       <p v-if="quoteBusy" role="status">正在重新核验选中项…</p>
@@ -304,7 +316,7 @@ async function removeRows(all: boolean) {
         <p v-if="quote.status === 'READY'" role="status" class="auth-success">预检查通过，当前报价已确认。创建订单时仍须重新核验。</p>
       </template>
       <p class="cart-summary-note">重新核验报价不预占库存；点击“创建订单”后才会下单并预占。确认报价不锁价，价格再次变化须重新确认。</p>
-      <template #footer><ElButton @click="closeQuote">返回购物车</ElButton><ElButton type="primary" :loading="quoteBusy" :disabled="!quote || quoteBusy || orderBusy" @click="checkQuote(true)">确认并重新核验报价</ElButton>
+      <template #footer><ElButton @click="closeQuote">返回购物车</ElButton><ElButton v-if="quote && quote.status !== 'READY'" type="primary" :loading="quoteBusy" :disabled="quoteBusy || orderBusy" @click="checkQuote(true)">确认并重新核验报价</ElButton>
         <ElButton type="primary" :loading="orderBusy" :disabled="!quote || quote.status !== 'READY' || quoteBusy || orderBusy || !!orderAttempt" @click="submitOrder">创建订单</ElButton>
         <ElButton v-if="orderAttempt?.uncertain" :loading="orderBusy" @click="createOrder()">重试确认上次下单</ElButton>
       </template>

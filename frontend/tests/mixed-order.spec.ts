@@ -50,14 +50,15 @@ test('mixed checkout keeps whole groups, rejects aggregate shortage and recovers
     await page.getByRole('button', { name: /^购物车/ }).click()
     const cart = page.getByRole('main', { name: '我的购物车' })
     await expect(cart.getByRole('region', { name: '装机方案 1', exact: true }).getByRole('checkbox')).toHaveCount(1)
-    await cart.getByRole('button', { name: '预结算', exact: true }).click()
-    const quote = page.getByRole('dialog', { name: '确认当前报价' })
-    await quote.getByRole('button', { name: '确认并重新核验报价' }).click()
-    await expect(quote).toContainText('当前报价已确认')
-    await expect(quote.getByRole('button', { name: '创建订单', exact: true })).toBeEnabled()
-    // Each group alone fits. The selected aggregate of 99 + 1 + 1 must still fit at creation.
-    expect((await write(admin, `/api/admin/products/${psu}/stock`, { delta: -1, reason: '聚合缺货验收' })).status()).toBe(200)
-    await quote.getByRole('button', { name: '创建订单', exact: true }).click()
+    // Change stock between automatic quote confirmation and the final order transaction.
+    await page.route('**/api/orders', async route => {
+      expect((await write(admin, `/api/admin/products/${psu}/stock`, { delta: -1, reason: '聚合缺货验收' })).status()).toBe(200)
+      await route.continue()
+    })
+    await cart.getByRole('button', { name: '结算订单', exact: true }).click()
+    const quote = page.getByRole('dialog', { name: '创建订单' })
+    await expect(quote.getByRole('alert')).toContainText('选中项缺货')
+    await page.unroute('**/api/orders')
     await expect(quote.getByRole('alert')).toContainText('选中项缺货')
     const retained = (await (await page.request.get('/api/cart')).json()).data
     expect(retained.items).toHaveLength(1)
@@ -96,9 +97,9 @@ test('mixed checkout keeps whole groups, rejects aggregate shortage and recovers
     const result = page.getByRole('main', { name: '订单结果' })
     await expect(result.getByLabel('订单成交总额')).toHaveText('¥79,955.50')
     await expect(result.getByRole('region', { name: '成交单品', exact: true }).locator('tbody tr')).toHaveCount(1)
-    for (const group of original.configurations) {
-      await expect(result.getByRole('region', { name: `成交配置组 #${group.id}`, exact: true }).locator('tbody tr')).toHaveCount(8)
-    }
+    const groups = result.getByRole('region', { name: '成交配置组', exact: true })
+    await expect(groups).toHaveCount(2)
+    for (let index = 0; index < 2; index++) await expect(groups.nth(index).locator('tbody tr')).toHaveCount(8)
     const stock = (await (await admin.get(`/api/admin/products/${psu}`)).json()).data
     expect(stock.reservedStock).toBe(101)
     expect(stock.product.stock).toBe(0)
