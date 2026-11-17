@@ -28,13 +28,13 @@ test('administrator filters, views, disables and enables an ordinary user while 
   try {
     expect((await write(owner.request, '/api/auth/register', { username, nickname: '浏览器普通用户', password, confirmPassword: password })).status()).toBe(201)
     await login(owner, username, password)
-    await expect(owner.getByRole('button', { name: '个人资料', exact: true })).toBeVisible()
+    await expect(owner.getByRole('button', { name: '用户菜单', exact: true })).toBeVisible()
     await expect(owner.getByRole('button', { name: '管理后台', exact: true })).toHaveCount(0)
     await owner.goto('/#admin/users')
     await expect(owner.getByRole('dialog', { name: '管理后台' }).getByRole('alert')).toContainText('没有管理员权限')
     expect((await owner.request.get('/api/admin/users')).status()).toBe(403)
     await owner.goto('/#profile')
-    await expect(owner.getByRole('dialog', { name: '个人资料与账户安全' })).toContainText(username)
+    await expect(owner.getByRole('main', { name: '个人中心' })).toContainText(username)
     expect((await write(dormant.request, '/api/auth/login', { username, password })).status()).toBe(200)
 
     const admin = await loginAdmin(page)
@@ -57,7 +57,7 @@ test('administrator filters, views, disables and enables an ordinary user while 
     await expect(admin.getByRole('status')).toContainText('账户已禁用')
     expect((await owner.request.get('/api/account/profile')).status()).toBe(401)
     await owner.reload()
-    await expect(owner.getByRole('dialog', { name: '个人资料与账户安全' }).getByRole('alert')).toContainText('请重新登录')
+    await expect(owner.getByRole('main', { name: '个人中心' }).getByRole('alert')).toContainText('请重新登录')
     await login(owner, username, password)
     await expect(owner.getByRole('dialog', { name: '统一登录' }).getByRole('alert')).toContainText('账户不可用')
     await page.screenshot({ path: '../.local/task-06-disabled.png', fullPage: true, animations: 'disabled' })
@@ -72,7 +72,7 @@ test('administrator filters, views, disables and enables an ordinary user while 
     await expect(admin.getByRole('status')).toContainText('账户已启用')
     expect((await dormant.request.get('/api/account/profile')).status()).toBe(401)
     await login(owner, username, password)
-    await expect(owner.getByRole('button', { name: '个人资料', exact: true })).toBeVisible()
+    await expect(owner.getByRole('button', { name: '用户菜单', exact: true })).toBeVisible()
     const result = await page.request.get(`/api/admin/users?username=${username}`)
     const user = (await result.json()).data.items[0]
     expect(user.status).toBe('ACTIVE')

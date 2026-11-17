@@ -91,9 +91,15 @@ public class SingleItemOrders {
     public View view(long accountId, String number) {
         var order = orders.order(accountId, number);
         if (order == null) throw new CartException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "订单不存在。");
+        return snapshot(order);
+    }
+
+    private View snapshot(OrderMapper.Header order) {
         return new View(order.orderNumber(), order.status(), order.currency(), order.total(),
                 order.createdAt().toInstant(ZoneOffset.UTC), order.paymentDeadline().toInstant(ZoneOffset.UTC),
-                order.paidAt() == null ? null : order.paidAt().toInstant(ZoneOffset.UTC), orders.items(number), orders.configurations(number));
+                order.paidAt() == null ? null : order.paidAt().toInstant(ZoneOffset.UTC),
+                order.cancelledAt() == null ? null : order.cancelledAt().toInstant(ZoneOffset.UTC), order.cancellationReason(),
+                orders.items(order.orderNumber()), orders.configurations(order.orderNumber()));
     }
 
     /** Serialize lifecycle requests on the order; payment never changes inventory. */
@@ -115,13 +121,57 @@ public class SingleItemOrders {
         return view(accountId, number);
     }
 
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public View cancel(long accountId, String number) {
+        var order = orders.lockOrder(accountId, number);
+        if (order == null) throw new CartException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "订单不存在。");
+        if (order.status().equals("CANCELLED")) return view(accountId, number);
+        if (!order.status().equals("PENDING_PAYMENT")) {
+            throw new CartException(HttpStatus.CONFLICT, "ORDER_NOT_CANCELLABLE", "当前订单状态不允许取消。");
+        }
+        cancelPending(order, "USER", clock.instant());
+        return view(accountId, number);
+    }
+
+    private void cancelPending(OrderMapper.Header order, String reason, Instant now) {
+        // Join the order transaction: a failure in either write leaves both retryable.
+        inventory.release(order.reservationReference());
+        if (orders.cancel(order.orderNumber(), LocalDateTime.ofInstant(now.truncatedTo(ChronoUnit.MICROS), ZoneOffset.UTC), reason) != 1) {
+            throw new IllegalStateException("Order changed under its lock");
+        }
+    }
+
+    /** Scanner uses the same lock and transaction as owner cancellation and payment. */
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public void timeout(long accountId, String number) {
+        var order = orders.lockOrder(accountId, number);
+        if (order == null || !order.status().equals("PENDING_PAYMENT")) return;
+        var now = clock.instant();
+        if (now.isBefore(order.paymentDeadline().toInstant(ZoneOffset.UTC))) return;
+        cancelPending(order, "TIMEOUT", now);
+    }
+
     @Transactional(readOnly = true)
-    public History history(long accountId, int page) {
-        if (page < 1) throw new CartException(HttpStatus.BAD_REQUEST, "INVALID_ORDER_QUERY", "订单页码须为正整数。");
-        var items = orders.history(accountId, (page - 1L) * 20).stream().map(order -> new Summary(
-                order.orderNumber(), order.status(), order.currency(), order.total(), order.createdAt().toInstant(ZoneOffset.UTC),
-                order.paymentDeadline().toInstant(ZoneOffset.UTC), order.paidAt() == null ? null : order.paidAt().toInstant(ZoneOffset.UTC))).toList();
-        return new History(items, page, 20, orders.count(accountId));
+    public History history(long accountId, HistoryQuery query) {
+        var states = List.of("PENDING_PAYMENT", "PAID", "COMPLETED", "CANCELLED");
+        if (query.page() < 1 || !Set.of(10, 20, 50).contains(query.pageSize())
+                || query.status() != null && !query.status().isEmpty() && !states.contains(query.status())
+                || query.keyword() != null && query.keyword().length() > 100
+                || query.startDate() != null && query.endDate() != null && query.startDate().isAfter(query.endDate())) {
+            throw new CartException(HttpStatus.BAD_REQUEST, "INVALID_ORDER_QUERY", "订单筛选条件、日期范围或分页无效。");
+        }
+        String keyword = query.keyword() == null ? "" : query.keyword().strip();
+        var filter = new HistoryQuery(query.page(), query.pageSize(), query.status(), keyword.isEmpty() ? ""
+                : "%" + keyword.replace("!", "!!").replace("%", "!%").replace("_", "!_") + "%", query.startDate(), query.endDate());
+        var counts = new LinkedHashMap<String, Long>();
+        counts.put("ALL", 0L);
+        states.forEach(state -> counts.put(state, 0L));
+        for (var count : orders.counts(accountId, filter)) {
+            counts.put(count.status(), count.count());
+            counts.compute("ALL", (key, total) -> total + count.count());
+        }
+        var items = orders.history(accountId, filter, (query.page() - 1L) * query.pageSize()).stream().map(this::snapshot).toList();
+        return new History(items, query.page(), query.pageSize(), counts.get(query.status() == null || query.status().isEmpty() ? "ALL" : query.status()), counts);
     }
 
     private static String digest(String value) {
@@ -132,11 +182,17 @@ public class SingleItemOrders {
 
     record View(String orderNumber, String status, String currency, @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal total,
                 Instant createdAt, Instant paymentDeadline, @JsonInclude(JsonInclude.Include.ALWAYS) Instant paidAt,
+                @JsonInclude(JsonInclude.Include.ALWAYS) Instant cancelledAt, @JsonInclude(JsonInclude.Include.ALWAYS) String cancellationReason,
                 List<Item> items, List<Configuration> configurations) {}
     record Configuration(long id, @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal amount) {}
-    record History(List<Summary> items, int page, int pageSize, long total) {}
-    record Summary(String orderNumber, String status, String currency, @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal total,
-                   Instant createdAt, Instant paymentDeadline, @JsonInclude(JsonInclude.Include.ALWAYS) Instant paidAt) {}
+    record HistoryQuery(int page, int pageSize, String status, String keyword, LocalDate startDate, LocalDate endDate) {
+        public LocalDateTime from() { return startDate == null ? null : utc(startDate); }
+        public LocalDateTime until() { return endDate == null ? null : utc(endDate.plusDays(1)); }
+        private static LocalDateTime utc(LocalDate date) {
+            return LocalDateTime.ofInstant(date.atStartOfDay(ZoneId.of("Asia/Shanghai")).toInstant(), ZoneOffset.UTC);
+        }
+    }
+    record History(List<View> items, int page, int pageSize, long total, Map<String, Long> counts) {}
     @JsonInclude(JsonInclude.Include.ALWAYS)
     record Item(long productId, String sku, String name, String model, String category,
                 @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal price, int quantity,

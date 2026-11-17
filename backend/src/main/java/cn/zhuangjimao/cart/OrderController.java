@@ -7,6 +7,8 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import org.springframework.http.*;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.format.annotation.DateTimeFormat;
+import java.time.LocalDate;
 import java.util.*;
 
 @RestController
@@ -17,8 +19,13 @@ class OrderController {
     OrderController(SingleItemOrders orders) { this.orders = orders; }
 
     @GetMapping
-    ResponseEntity<HistoryResponse> history(@AuthenticationPrincipal AccountPrincipal principal, @RequestParam(defaultValue="1") int page) {
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new HistoryResponse(orders.history(principal.ownerId(), page)));
+    ResponseEntity<HistoryResponse> history(@AuthenticationPrincipal AccountPrincipal principal, @RequestParam(defaultValue="1") int page,
+            @RequestParam(defaultValue="20") int pageSize, @RequestParam(required=false) String status,
+            @RequestParam(required=false) String keyword,
+            @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required=false) @DateTimeFormat(iso=DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new HistoryResponse(orders.history(principal.ownerId(),
+                new SingleItemOrders.HistoryQuery(page, pageSize, status, keyword, startDate, endDate))));
     }
 
     @PostMapping
@@ -45,16 +52,28 @@ class OrderController {
     @PostMapping("/{number}/pay")
     ResponseEntity<Response> pay(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable String number,
                                  @RequestBody(required = false) String body) {
-        if (body != null && !body.isBlank()) {
-            try (var parser = STRICT.createParser(body)) {
-                JsonNode input = STRICT.readTree(parser);
-                if (input == null || !input.isObject() || !input.isEmpty() || parser.nextToken() != null) invalidPayment();
-            } catch (java.io.IOException error) { invalidPayment(); }
-        }
+        if (!emptyObject(body)) invalidPayment();
         return answer(orders.pay(principal.ownerId(), number));
     }
 
     private static void invalidPayment() { throw new CartException(HttpStatus.BAD_REQUEST, "INVALID_PAYMENT_INPUT", "模拟支付不接受客户端金额、状态、时间或用户字段。"); }
+
+    @PostMapping("/{number}/cancel")
+    ResponseEntity<Response> cancel(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable String number,
+                                    @RequestBody(required = false) String body) {
+        if (!emptyObject(body)) invalidCancellation();
+        return answer(orders.cancel(principal.ownerId(), number));
+    }
+
+    private static void invalidCancellation() { throw new CartException(HttpStatus.BAD_REQUEST, "INVALID_CANCELLATION_INPUT", "取消订单不接受客户端状态、时间、原因或用户字段。"); }
+
+    private static boolean emptyObject(String body) {
+        if (body == null || body.isBlank()) return true;
+        try (var parser = STRICT.createParser(body)) {
+            JsonNode input = STRICT.readTree(parser);
+            return input != null && input.isObject() && input.isEmpty() && parser.nextToken() == null;
+        } catch (java.io.IOException error) { return false; }
+    }
 
     private static Set<Long> ids(JsonNode input, String name) {
         var value = input.get(name);

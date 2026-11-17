@@ -151,17 +151,14 @@ a { color: inherit; text-decoration: none; }
 .auth-switch { margin: 18px 0 0; text-align: center; font-size: 13px; }
 .auth-error { background: #fff0f2; border: 1px solid #f5d5dc; border-radius: 6px; color: #b13c51; padding: 12px; line-height: 1.7; font-size: 13px; }
 .auth-success { background: #eef9f3; border-radius: 6px; color: #248250; padding: 12px; }
-.profile-dialog { border-radius: 12px; max-width: calc(100vw - 32px); }
 .profile-identity { display: flex; flex-wrap: wrap; gap: 22px 40px; padding: 18px 22px; margin: 0 0 24px; border-radius: 8px; background: #f3f7fc; }
 .profile-identity dt { font-size: 12px; color: #7c8ea6; margin-bottom: 7px; }
 .profile-identity dd { margin: 0; font-size: 14px; color: #234268; }
-.profile-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
-.profile-sections section + section { border-left: 1px solid #e7edf5; padding-left: 30px; }
+.profile-sections { max-width: 500px; }
 .profile-sections h2 { font-size: 17px; margin: 0 0 10px; color: #234268; }
 .profile-sections section > p { color: #7c8ea6; font-size: 12px; line-height: 1.8; min-height: 44px; margin: 0 0 18px; }
 .profile-sections fieldset { display: grid; gap: 17px; border: 0; padding: 0; margin: 0; min-width: 0; }
 .profile-actions { display: flex; gap: 10px; }
-@media (max-width: 640px) { .profile-sections { grid-template-columns: 1fr; } .profile-sections section + section { border-left: 0; border-top: 1px solid #e7edf5; padding: 24px 0 0; } }
 .admin-layout { display: grid; grid-template-columns: 160px minmax(0, 1fr); min-height: 280px; border: 1px solid #e7edf5; border-radius: 8px; overflow: hidden; }
 .admin-layout nav { display: flex; flex-direction: column; background: #f4f7fc; padding: 14px 8px; gap: 6px; }
 .admin-layout nav button { background: transparent; border: 0; padding: 13px 18px; text-align: left; color: #536c8c; border-radius: 6px; }
@@ -227,3 +224,37 @@ a { color: inherit; text-decoration: none; }
 .storefront--cart .page-width { width: min(1560px, calc(100% - 48px)); }
 .header-cart[aria-current=page] { background: #edf3ff; }
 @media (max-width: 640px) { .storefront--cart .page-width { width: calc(100% - 24px); } }
+
+/* The account menu and the four-page customer workspace. */
+.header-account { flex: none; }
+.header-account:empty { display: none; }
+.header-inner:has(.user-menu) .tagline { display: none; }
+.user-menu { position: relative; }
+.user-menu-trigger { display: flex; align-items: center; gap: 10px; padding: 5px 0 5px 5px; border: 0; background: transparent; color: #111b31; }
+.user-menu-trigger > svg { width: 15px; height: 15px; margin-left: 2px; }
+.user-menu-trigger .account-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #131d35; font-size: 14px; font-weight: 600; }
+.user-avatar { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; flex: none; border-radius: 50%; background: linear-gradient(145deg,#9bb0d4,#8095be); color: white; }
+.user-avatar svg { width: 29px; height: 29px; stroke-width: 1.5; fill: #fff; }
+.user-menu-links { position: absolute; top: calc(100% + 13px); right: 0; width: 205px; padding: 8px; background: white; border: 1px solid #e3ebf9; border-radius: 12px; box-shadow: 0 12px 36px #2346781c; z-index: 20; }
+.user-menu-links a { display: flex; align-items: center; gap: 13px; padding: 13px 14px; border-radius: 7px; font-size: 14px; color: #1c2c49; }
+.user-menu-links a:hover, .user-menu-links a:focus-visible { background: #edf3ff; color: var(--blue); }
+.user-menu-links svg { width: 20px; height: 20px; }
+.storefront--account { background: radial-gradient(ellipse at 60% 0,#f9fbff,#f2f7ff 90%); color: #131c31; }
+.storefront--account .header { border-bottom: 1px solid #edf2fb; }
+.storefront--account .header-inner { width: calc(100% - 88px); max-width: 1636px; gap: 28px; min-height: 76px; }
+.storefront--account .brand { color: #0968fa; }
+.storefront--account .account-bar { background: #f8faff; border: 0; }
+.storefront--account .account-bar-inner { min-height: 25px; padding-block: 2px; }
+.storefront--account .header-cart { border: 0; background: transparent; padding: 0; width: 30px; height: 38px; font-size: 0; margin: 0; gap: 0; position: relative; }
+.storefront--account .header-cart > svg:first-child { width: 24px; height: 24px; color: #152346; }
+.storefront--account .header-cart > svg:last-child { display: none; }
+.storefront--account .header-cart .cart-count { font-size: 10px; position: absolute; top: -3px; right: -7px; }
+.user-center .page-width { width: 100%; max-width: none; margin: 0; }
+.user-center .order-result { padding-top: 0; }
+.account-section-title { display: flex; align-items: center; gap: 15px; min-height: 44px; margin-bottom: 16px; }
+.account-section-title > span { display: flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 8px; background: #0867ff; color: #fff; flex: none; }
+.account-section-title svg { width: 23px; height: 23px; }
+.account-section-title h1 { margin: 0; font-size: 26px; color: #111827; letter-spacing: -.6px; white-space: nowrap; }
+.account-section-title > p { font-size: 14px; color: #62708d; margin: 0 0 0 4px; }
+@media (max-width: 1100px) { .storefront--account .header-inner { width: calc(100% - 40px); gap: 18px; } .user-menu-trigger .account-name { max-width: 100px; } .user-menu-trigger { gap: 7px; } .header-inner:has(.user-menu) { flex-wrap: wrap; padding-block: 12px; gap: 16px; } .header-inner:has(.user-menu) .search { min-width: 220px; } }
+@media (max-width: 700px) { .storefront--account .header-inner { width: calc(100% - 24px); } .header-inner:has(.user-menu) .search { order: 4; flex-basis: 100%; } .header-inner:has(.user-menu) .workspace-nav { margin-left: auto; } .header-inner:has(.user-menu) .brand { font-size: 21px; gap: 7px; } .header-inner:has(.user-menu) .brand-mark { width: 31px; height: 34px; } .user-menu-trigger .account-name { max-width: 85px; font-size: 12px; } .user-avatar { width: 33px; height: 33px; } .user-avatar svg { width: 23px; height: 23px; } .account-section-title { flex-wrap: wrap; gap: 10px; margin-bottom: 14px; } .account-section-title h1 { font-size: 22px; } .account-section-title > p { flex-basis: 100%; margin-left: 0; font-size: 12px; } }

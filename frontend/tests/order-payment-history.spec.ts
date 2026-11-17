@@ -47,7 +47,8 @@ test('owner browses history, confirms simulated payment and safely retries a los
     expect((await write(admin, `${productPath}/stock`, { delta: 9, reason: '模拟支付隔离夹具' })).status()).toBe(200)
     await signIn(page)
     await page.getByRole('link', { name: 'DIY 装机', exact: true }).click()
-    await page.getByRole('button', { name: '我的订单', exact: true }).click()
+    await page.getByRole('button', { name: '用户菜单', exact: true }).click()
+    await page.getByRole('navigation', { name: '用户功能' }).getByRole('link', { name: '订单管理', exact: true }).click()
     const history = page.getByRole('main', { name: '我的订单' })
     await expect(history).toContainText('暂无订单')
     await expect(page.getByRole('navigation', { name: '商城导航' }).locator('.active')).toHaveCount(0)
@@ -100,7 +101,8 @@ test('owner browses history, confirms simulated payment and safely retries a los
     await dialog.getByRole('button', { name: '返回订单' }).click()
     await page.getByRole('button', { name: '退出登录', exact: true }).click()
     await signIn(page)
-    await page.getByRole('button', { name: '我的订单', exact: true }).click()
+    await page.getByRole('button', { name: '用户菜单', exact: true }).click()
+    await page.getByRole('navigation', { name: '用户功能' }).getByRole('link', { name: '订单管理', exact: true }).click()
     await expect(history).toContainText('暂无订单')
     await expect(history).not.toContainText(first.orderNumber)
     await page.goto(`/#order/${first.orderNumber}`)
@@ -129,6 +131,7 @@ test('payment session expiry keeps login feedback visible and disables confirmat
   await page.route(`**/api/orders/${number}`, route => route.fulfill({ json: { data: {
     orderNumber: number, status: 'PENDING_PAYMENT', currency: 'CNY', total: '10.01',
     createdAt: '2026-11-13T00:00:00Z', paymentDeadline: '2026-11-13T00:30:00Z', paidAt: null,
+    cancelledAt: null, cancellationReason: null,
     items: [{ productId: 7, sku: 'PAYMENT-EXPIRY', name: '支付夹具', model: 'Expiry', category: 'PSU',
       price: '10.01', quantity: 1, amount: '10.01', configurationId: null }], configurations: [],
   } } }))

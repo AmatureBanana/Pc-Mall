@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ElButton, ElDialog } from 'element-plus'
-import { adminModules, AuthError, currentAccount, loginAccount, signedIn, writeAuth, type Account, type AdminModule } from './auth'
-import ProfilePanel from './ProfilePanel.vue'
+import { adminModules, AuthError, currentAccount, loginAccount, sessionAccount, signedIn, writeAuth, type Account, type AdminModule } from './auth'
+import HardwareIcon from './HardwareIcon.vue'
+import UserAvatar from './UserAvatar.vue'
+import { accountNavigation } from './accountNavigation'
 import CatalogAdministration from './CatalogAdministration.vue'
 import UserAdministration from './UserAdministration.vue'
 import { useCart } from './cart'
 import { beginWorkspaceSignIn, endWorkspaceSignIn, signInOrigin, seenBaseline, restorationPending, workspaceActive } from './workspaceSession'
 
-const user = ref<Account | null>(null)
+const user = sessionAccount
+const menuOpen = ref(false)
+const menuElement = ref<HTMLElement | null>(null)
+const menuTrigger = ref<HTMLButtonElement | null>(null)
 const route = ref('')
 const username = ref('')
 const nickname = ref('')
@@ -30,6 +35,12 @@ let adminRevision = 0
 let authFlowRevision = 0
 
 function navigate(target = '') { window.location.hash = target }
+function dismissMenu(event: PointerEvent) {
+  if (!menuElement.value?.contains(event.target as Node)) menuOpen.value = false
+}
+function escapeMenu(event: KeyboardEvent) {
+  if (event.key === 'Escape' && menuOpen.value) { menuOpen.value = false; menuTrigger.value?.focus() }
+}
 /** Remembers that this sign-in started in the workspace and freezes what the user had seen. */
 function openAuth(target: 'login' | 'register') {
   authFlowRevision++
@@ -166,28 +177,39 @@ function passwordChanged() {
   notice.value = '密码修改成功，旧会话已失效，请重新登录。'
 }
 watch(route, (next, previous) => {
+  menuOpen.value = false
   clearSecrets()
   error.value = ''
-  if (!((previous === 'register' || previous === 'profile') && next === 'login')) notice.value = ''
+  if (!(['register', 'profile', 'security'].includes(previous) && next === 'login')) notice.value = ''
   if (next === 'admin' || next.startsWith('admin/')) void loadAdmin()
   else adminRevision++
 })
-onMounted(() => { syncRoute(); void checkSession(); window.addEventListener('hashchange', syncRoute); window.addEventListener('focus', checkSession) })
-onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.removeEventListener('focus', checkSession) })
+function setProfileBusy(value: boolean) { profileBusy.value = value }
+defineExpose({ profileUpdated, profileExpired, passwordChanged, setProfileBusy })
+onMounted(() => { syncRoute(); void checkSession(); window.addEventListener('hashchange', syncRoute); window.addEventListener('focus', checkSession); document.addEventListener('pointerdown', dismissMenu); document.addEventListener('keydown', escapeMenu) })
+onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.removeEventListener('focus', checkSession); document.removeEventListener('pointerdown', dismissMenu); document.removeEventListener('keydown', escapeMenu) })
 </script>
 
 <template>
   <div class="account-bar"><div class="page-width account-bar-inner">
     <span class="account-welcome">欢迎来到装机猫</span>
-    <span v-if="user" class="account-name">{{ user.nickname }} <small>{{ user.role === 'ADMIN' ? '管理员' : '普通用户' }}</small></span>
-    <template v-else><button @click="openAuth('login')">登录</button><button @click="openAuth('register')">注册</button></template>
+    <template v-if="!user"><button @click="openAuth('login')">登录</button><button @click="openAuth('register')">注册</button></template>
     <button v-if="user?.role === 'ADMIN'" @click="navigate('admin')">管理后台</button>
-    <button v-if="user" @click="navigate('profile')">个人资料</button>
-    <button v-if="user" @click="navigate('orders')">我的订单</button>
     <button v-if="user" :disabled="busy || profileBusy" @click="logout">退出登录</button>
     <span v-if="sessionError" role="alert" class="account-session-error">{{ sessionError }} <button @click="checkSession">重试</button></span>
     <span v-else-if="notice && !authOpen" role="status">{{ notice }}</span>
   </div></div>
+
+  <Teleport to="#header-account" defer>
+    <div v-if="user" ref="menuElement" class="user-menu">
+      <button ref="menuTrigger" type="button" class="user-menu-trigger" aria-label="用户菜单" :aria-expanded="menuOpen" aria-controls="user-menu-links" @click="menuOpen = !menuOpen">
+        <UserAvatar/><span class="account-name" :title="user.nickname">用户 {{ user.nickname || user.username }}</span><HardwareIcon name="chevron-down"/>
+      </button>
+      <nav v-if="menuOpen" id="user-menu-links" class="user-menu-links" aria-label="用户功能">
+        <a v-for="entry in accountNavigation" :key="entry.route" :href="`#${entry.route}`" @click="menuOpen = false"><HardwareIcon :name="entry.icon"/>{{ entry.label }}</a>
+      </nav>
+    </div>
+  </Teleport>
 
   <ElDialog :model-value="authOpen" :title="route === 'register' ? '注册账户' : '统一登录'" width="440px" class="auth-dialog" :close-on-click-modal="false" @close="authOpen && closeAuth()">
     <p class="auth-intro">{{ route === 'register' ? '创建普通账户，开始你的装机之旅。' : '普通用户与管理员使用同一入口。' }}</p>
@@ -202,9 +224,6 @@ onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.
     </form>
     <p class="auth-switch"><button :disabled="busy" @click="navigate(route === 'register' ? 'login' : 'register')">{{ route === 'register' ? '已有账户？去登录' : '还没有账户？去注册' }}</button></p>
   </ElDialog>
-
-  <ProfilePanel v-if="route === 'profile'" @updated="profileUpdated" @expired="profileExpired" @password-changed="passwordChanged" @busy="profileBusy = $event"/>
-
 
   <ElDialog :model-value="adminOpen" title="管理后台" :width="selectedModule?.code === 'products' || selectedModule?.code === 'users' ? '1260px' : '900px'" class="admin-dialog" @close="adminOpen && navigate()">
     <p v-if="adminLoading" role="status">正在验证后台权限…</p>

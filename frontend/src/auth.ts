@@ -8,6 +8,14 @@ export interface Account {
  * already polls the session (the account bar), so other surfaces never fetch /api/auth/me again.
  */
 export const signedIn = ref(false)
+export const sessionAccount = ref<Account | null>(null)
+export const avatarRevision = ref(0)
+export async function uploadAvatar(file: File) {
+  const csrf = await request('/api/auth/csrf') as { token: string; headerName: string }
+  const value = account(await request('/api/account/avatar', { method: 'POST', body: file, headers: { [csrf.headerName]: csrf.token } }))
+  avatarRevision.value++
+  return value
+}
 export interface AdminModule { code: string; title: string; description: string; availability: string }
 export class AuthError extends Error {
   constructor(message: string, readonly status: number, readonly code?: string) { super(message) }

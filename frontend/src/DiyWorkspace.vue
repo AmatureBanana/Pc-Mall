@@ -4,7 +4,7 @@ import { ElButton, ElDialog, ElEmpty, ElMessage, ElSkeleton } from 'element-plus
 import HardwareIcon from './HardwareIcon.vue'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
 import { formatPrice, formatParameter, imageFallback, loadProduct, loadProducts } from './catalog'
-import { hardwareCategories, hardwareLabels, type HardwareCategory } from './diy'
+import { hardwareCategories, hardwareDisplayOrder, hardwareLabels, type HardwareCategory } from './diy'
 import { useCatalogRequest } from './useCatalogRequest'
 import { useDiyWorkspace } from './useDiyWorkspace'
 import { signedIn } from './auth'
@@ -35,8 +35,7 @@ const { data: quote, status: quoteStatus, error: quoteError, refresh: refreshQuo
 const { data: check, status: checkStatus, error: checkError, refresh: refreshCheck } = compatibility
 const { data: products, status, error, refresh } = useCatalogRequest(
   signal => loadProducts(signal, activeCategory.value, keyword.value), '候选商品')
-const order: HardwareCategory[] = ['CPU', 'COOLER', 'MOTHERBOARD', 'MEMORY', 'GPU', 'SSD', 'PSU', 'CASE']
-const displayCategories = order.map(code => hardwareCategories.find(item => item.code === code)!)
+const displayCategories = hardwareDisplayOrder.map(code => hardwareCategories.find(item => item.code === code)!)
 const labels: Record<HardwareCategory, string> = hardwareLabels
 const activeLabel = computed(() => labels[activeCategory.value])
 const brands = computed(() => [...new Set((products.value ?? []).map(product => product.brand))])

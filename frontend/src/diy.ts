@@ -2,6 +2,11 @@ import { categories, formatPrice, isProductIdentity, type ProductIdentity } from
 
 export const hardwareCategories = categories.filter(category => category.code !== 'ALL')
 export type HardwareCategory = typeof hardwareCategories[number]['code']
+export const hardwareDisplayOrder: readonly HardwareCategory[] = ['CPU', 'COOLER', 'MOTHERBOARD', 'MEMORY', 'GPU', 'SSD', 'PSU', 'CASE']
+export function sortHardwareItems<T extends { category: string }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => hardwareDisplayOrder.findIndex(code => code === a.category)
+    - hardwareDisplayOrder.findIndex(code => code === b.category))
+}
 export const hardwareLabels: Record<HardwareCategory, string> = {
   CPU: 'CPU', MOTHERBOARD: '主板', GPU: '显卡', MEMORY: '内存',
   SSD: '硬盘', PSU: '电源', CASE: '机箱', COOLER: 'CPU 散热器',

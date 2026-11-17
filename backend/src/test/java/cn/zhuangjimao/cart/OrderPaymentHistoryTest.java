@@ -230,6 +230,44 @@ class OrderPaymentHistoryTest {
         }
     }
 
+    @Test void orderManagementFiltersSnapshotCardsAndCountsOnlyTheCurrentOwnersOrders() throws Exception {
+        var owner = account("uiHistory", "USER");
+        var other = account("uiForeign", "USER");
+        long firstSku = product("uiFirst"), secondSku = product("uiSecond");
+        clock.now.set(Instant.parse("2026-11-12T16:30:00Z")); // November 13 in the UI's Asia/Shanghai calendar.
+        var first = create(owner, firstSku);
+        String firstNumber = first.path("orderNumber").asText();
+        assertThat(post(owner, "/api/orders/" + firstNumber + "/pay", Map.of()).statusCode()).isEqualTo(200);
+        clock.now.set(Instant.parse("2026-11-14T00:00:00Z"));
+        var second = create(owner, secondSku);
+        assertThat(post(owner, "/api/orders/" + second.path("orderNumber").asText() + "/cancel", Map.of()).statusCode()).isEqualTo(200);
+        clock.now.set(Instant.parse("2026-11-15T00:00:00Z"));
+        create(owner, firstSku);
+        create(other, firstSku);
+        db.update("UPDATE products SET name='Changed catalog name',price=99.99 WHERE id=?", firstSku);
+        String name = java.net.URLEncoder.encode("支付夹具 uiFirst", java.nio.charset.StandardCharsets.UTF_8);
+        var response = get(owner, "/api/orders?pageSize=10&status=PAID&keyword=" + name + "&startDate=2026-11-13&endDate=2026-11-13");
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(200);
+        var filtered = data(response);
+        assertThat(filtered.path("total").asInt()).isEqualTo(1);
+        assertThat(filtered.path("pageSize").asInt()).isEqualTo(10);
+        assertThat(filtered.path("items")).hasSize(1);
+        var card = filtered.path("items").get(0);
+        assertThat(card.path("orderNumber").asText()).isEqualTo(firstNumber);
+        assertThat(card.path("items")).isEqualTo(first.path("items"));
+        assertThat(card.path("configurations")).isEmpty();
+        assertThat(filtered.path("counts").path("ALL").asInt()).isEqualTo(1);
+        assertThat(filtered.path("counts").path("PAID").asInt()).isEqualTo(1);
+        var all = data(get(owner, "/api/orders?pageSize=10"));
+        assertThat(all.path("total").asInt()).isEqualTo(3);
+        assertThat(all.path("counts").path("PENDING_PAYMENT").asInt()).isEqualTo(1);
+        assertThat(all.path("counts").path("CANCELLED").asInt()).isEqualTo(1);
+        assertThat(data(get(owner, "/api/orders?keyword=%25")).path("total").asInt()).isZero();
+        for (String query : List.of("status=FORGED", "pageSize=11", "startDate=2026-11-14&endDate=2026-11-13", "startDate=invalid")) {
+            assertThat(get(owner, "/api/orders?" + query).statusCode()).as(query).isEqualTo(400);
+        }
+    }
+
     private HttpClient account(String suffix, String role) throws Exception {
         String name = prefix + suffix;
         db.update("INSERT INTO account(username,password_hash,nickname,role) VALUES(?,?,?,?)", name, passwords.encode("PaymentPassword123!"), name, role);
