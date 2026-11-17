@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import { ElButton, ElDialog } from 'element-plus'
-import { AuthError, changePassword, currentProfile, updateNickname, type Account } from './auth'
+import { ElButton } from 'element-plus'
+import { AuthError, changePassword, currentProfile, updateNickname, uploadAvatar, type Account } from './auth'
+import HardwareIcon from './HardwareIcon.vue'
+import UserAvatar from './UserAvatar.vue'
+
+defineProps<{ mode: 'profile' | 'security' }>()
 
 const emit = defineEmits<{
   updated: [account: Account]
@@ -73,26 +77,43 @@ async function savePassword() {
   } catch (cause) { if (active) feedback(cause) }
   finally { if (active) finish() }
 }
+async function selectAvatar(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !begin('avatar')) return
+  try {
+    if (!['image/png', 'image/jpeg'].includes(file.type) || file.size > 2 * 1024 * 1024) throw new Error('请选择不超过2MB的PNG或JPEG图片。')
+    const value = await uploadAvatar(file)
+    if (!active) return
+    profile.value = value
+    emit('updated', value)
+    notice.value = '头像已保存。'
+  } catch (cause) { if (active) feedback(cause) }
+  finally { if (active) finish() }
+}
 onMounted(load)
 onUnmounted(() => { active = false; clearSecrets(); emit('busy', false) })
 </script>
 
 <template>
-  <ElDialog :model-value="true" title="个人资料与账户安全" width="760px" class="profile-dialog" :close-on-click-modal="false" :show-close="!working" :close-on-press-escape="!working" @close="navigate()">
-    <p class="auth-intro">管理你的显示昵称与登录密码。</p>
+  <main class="account-profile" :aria-label="mode === 'security' ? '账号与安全' : '个人中心'">
+    <header class="account-section-title"><span><HardwareIcon :name="mode === 'security' ? 'shield' : 'user'"/></span><h1>{{ mode === 'security' ? '账号与安全' : '个人中心' }}</h1><p>{{ mode === 'security' ? '管理登录密码，保护你的账户' : '查看与管理你的个人资料' }}</p></header>
+    <div class="account-profile-card">
     <p v-if="loading" role="status">正在读取个人资料…</p>
     <p v-if="error" role="alert" class="auth-error">{{ error }}</p>
     <p v-if="notice" role="status" class="auth-success">{{ notice }}</p>
     <template v-if="profile && !loading">
-      <dl class="profile-identity"><div><dt>账户 ID</dt><dd>{{ profile.id }}</dd></div><div><dt>用户名</dt><dd>{{ profile.username }}</dd></div><div><dt>账户角色</dt><dd>{{ profile.role === 'ADMIN' ? '管理员' : '普通用户' }}</dd></div></dl>
+      <div v-if="mode === 'profile'" class="profile-avatar"><UserAvatar/><div><label>上传头像<input type="file" accept="image/png,image/jpeg" aria-label="上传头像" :disabled="!!working" @change="selectAvatar"/></label><p>{{ working === 'avatar' ? '正在上传…' : '支持 PNG、JPEG，最大2MB；将居中裁切为方形。' }}</p></div></div>
+      <dl class="profile-identity"><div v-if="mode === 'profile'"><dt>账户 ID</dt><dd>{{ profile.id }}</dd></div><div><dt>用户名</dt><dd>{{ profile.username }}</dd></div><div><dt>账户角色</dt><dd>{{ profile.role === 'ADMIN' ? '管理员' : '普通用户' }}</dd></div></dl>
       <div class="profile-sections">
-        <section><h2>个人昵称</h2><p>昵称会显示在商城顶部，留空时使用用户名。</p>
+        <section v-if="mode === 'profile'"><h2>个人昵称</h2><p>昵称会显示在商城顶部，留空时使用用户名。</p>
           <form class="auth-form" @submit.prevent="saveNickname"><fieldset :disabled="!!working">
             <label>昵称<input v-model="nickname" aria-label="昵称" aria-describedby="nickname-help" name="nickname" autocomplete="nickname"/><small id="nickname-help">最多 30 个字符 · 当前 {{ Array.from(nickname).length }}/30</small></label>
             <ElButton type="primary" native-type="submit" :loading="working === 'nickname'">保存昵称</ElButton>
           </fieldset></form>
         </section>
-        <section><h2>修改密码</h2><p>修改成功后，所有旧会话将失效，需要重新登录。</p>
+        <section v-else><h2>修改密码</h2><p>修改成功后，所有旧会话将失效，需要重新登录。</p>
           <form class="auth-form" @submit.prevent="savePassword"><fieldset :disabled="!!working">
             <label>旧密码<input v-model="oldPassword" aria-label="旧密码" type="password" autocomplete="current-password" required/></label>
             <label>新密码<input v-model="newPassword" aria-label="新密码" aria-describedby="new-password-help" type="password" autocomplete="new-password" required/><small id="new-password-help">8～64 个字符，UTF-8 编码不超过 72 字节</small></label>
@@ -103,5 +124,17 @@ onUnmounted(() => { active = false; clearSecrets(); emit('busy', false) })
       </div>
     </template>
     <div v-if="!profile && !loading" class="profile-actions"><ElButton type="primary" @click="navigate('login')">前往登录</ElButton><ElButton @click="load">重试</ElButton></div>
-  </ElDialog>
+    </div>
+  </main>
 </template>
+
+<style scoped>
+.account-profile-card { padding: 28px; border: 1px solid #e5ecf8; background: white; border-radius: 15px; min-height: 420px; }
+.profile-avatar { display: flex; align-items: center; gap: 20px; margin-bottom: 24px; }
+.profile-avatar :deep(.user-avatar) { width: 80px; height: 80px; }
+.profile-avatar label { display: grid; gap: 8px; font-size: 14px; }
+.profile-avatar p { color: #7c8ea6; font-size: 12px; }
+.profile-avatar input { max-width: 100%; }
+.profile-identity { gap: 24px 70px; }
+@media (max-width: 700px) { .account-profile-card { padding: 18px; } .profile-identity { gap: 20px; } }
+</style>

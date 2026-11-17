@@ -22,13 +22,16 @@ export interface CheckoutPreview {
 export interface Order {
   orderNumber: string; status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'COMPLETED'; currency: 'CNY'
   total: string; createdAt: string; paymentDeadline: string; paidAt: string | null
+  cancelledAt: string | null; cancellationReason: 'USER' | 'TIMEOUT' | null
   items: { productId: number; sku: string; name: string; model: string; category: string; price: string
     quantity: number; amount: string; configurationId: number | null }[]
   configurations: { id: number; amount: string }[]
 }
-export type OrderSummary = Omit<Order, 'items' | 'configurations'>
-export interface OrderHistory { items: OrderSummary[]; page: number; pageSize: number; total: number }
+export type OrderSummary = Order
+export interface OrderHistory { items: Order[]; page: number; pageSize: number; total: number; counts: Record<'ALL' | Order['status'], number> }
+export interface OrderFilters { pageSize?: number; status?: Order['status'] | ''; keyword?: string; startDate?: string; endDate?: string }
 export const orderStates = { PENDING_PAYMENT: '待支付', PAID: '已支付', CANCELLED: '已取消', COMPLETED: '已完成' }
+export const cancellationReasons = { USER: '本人主动取消', TIMEOUT: '支付超时自动取消' }
 /**
  * The per-line cart quantity bound, mirroring the server rule and the V19 check constraint.
  * It bounds a single-item line, independently of aggregate stock demand.
@@ -123,6 +126,7 @@ const order = ref<Order | null>(null)
 const orderHistory = ref<OrderHistory | null>(null)
 const historyLoading = ref(false)
 const paymentBusy = ref(false)
+const cancellationBusy = ref(false)
 const editing = ref<{ id: number; revision: number; editToken: string; workspace: Workspace; previousWorkspace?: Workspace } | null>(null)
 type Scope = { identity: number; order: number; signal: AbortSignal }
 type AddAttempt = { key: string; inflight: Promise<boolean> | null }
@@ -148,7 +152,7 @@ function clear() {
   orderBusy.value = false
   order.value = null
   orderHistory.value = null
-  historyLoading.value = paymentBusy.value = false
+  historyLoading.value = paymentBusy.value = cancellationBusy.value = false
   finishEdit()
   acceptedOrder = latestAction = 0
   cart.value = null
@@ -373,6 +377,9 @@ function isOrderSummary(value: unknown): value is OrderSummary {
     && isMoney(result.total) && typeof result.createdAt === 'string' && Number.isFinite(Date.parse(result.createdAt))
     && typeof result.paymentDeadline === 'string' && Number.isFinite(Date.parse(result.paymentDeadline))
     && (result.paidAt === null || typeof result.paidAt === 'string' && Number.isFinite(Date.parse(result.paidAt)))
+    && (result.cancelledAt === null && result.cancellationReason === null
+      || result.status === 'CANCELLED' && typeof result.cancelledAt === 'string' && Number.isFinite(Date.parse(result.cancelledAt))
+        && (result.cancellationReason === 'USER' || result.cancellationReason === 'TIMEOUT'))
 }
 
 function parseOrder(value: unknown): Order {
@@ -437,23 +444,28 @@ async function loadOrder(number: string): Promise<void> {
   } catch (cause) { failure(operation, cause, '订单暂时无法读取，请重试。') }
 }
 
-async function loadOrders(page = 1): Promise<void> {
+async function loadOrders(page = 1, filters: OrderFilters = {}): Promise<void> {
   const operation = beginAction()
   orderHistory.value = null
   historyLoading.value = true
   try {
-    const result = await request(`/api/orders?page=${page}`, { signal: operation.signal }) as OrderHistory | null
-    if (!result || !Array.isArray(result.items) || !result.items.every(isOrderSummary) || result.items.length > 20
-      || result.page !== page || result.pageSize !== 20 || !Number.isSafeInteger(result.total) || result.total < 0) {
+    const pageSize = filters.pageSize ?? 20
+    const query = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
+    for (const key of ['status', 'keyword', 'startDate', 'endDate'] as const) if (filters[key]) query.set(key, filters[key])
+    const result = await request(`/api/orders?${query}`, { signal: operation.signal }) as OrderHistory | null
+    if (!result || !Array.isArray(result.items) || !result.items.every(isOrderSummary) || result.items.length > pageSize
+      || result.page !== page || result.pageSize !== pageSize || !Number.isSafeInteger(result.total) || result.total < 0
+      || !result.counts || !['ALL', ...Object.keys(orderStates)].every(key => Number.isSafeInteger(result.counts[key as keyof OrderHistory['counts']]) && result.counts[key as keyof OrderHistory['counts']] >= 0)) {
       throw new Error('订单列表格式异常，请重试。')
     }
+    result.items.forEach(parseOrder)
     if (current(operation) && operation.order === latestAction) orderHistory.value = result
   } catch (cause) { failure(operation, cause, '订单列表暂时无法读取，请重试。') }
   finally { if (current(operation) && operation.order === latestAction) historyLoading.value = false }
 }
 
 async function payOrder(number: string): Promise<boolean> {
-  if (paymentBusy.value) return false
+  if (paymentBusy.value || cancellationBusy.value) return false
   const operation = beginAction()
   paymentBusy.value = true
   try {
@@ -469,9 +481,26 @@ async function payOrder(number: string): Promise<boolean> {
   } finally { if (current(operation)) paymentBusy.value = false }
 }
 
+async function cancelOrder(number: string): Promise<boolean> {
+  if (cancellationBusy.value || paymentBusy.value) return false
+  const operation = beginAction()
+  cancellationBusy.value = true
+  try {
+    const result = parseOrder(await write(`/api/orders/${encodeURIComponent(number)}/cancel`, {}, 'POST', operation.signal))
+    if (result.orderNumber !== number || result.status !== 'CANCELLED') throw new Error('取消结果格式异常。')
+    if (!current(operation) || operation.order !== latestAction) return false
+    order.value = result
+    return true
+  } catch (cause) {
+    const refused = cause instanceof AuthError && cause.status >= 400 && cause.status < 500
+    failure(operation, refused ? cause : new Error('取消结果暂未确认，请重新读取订单或重试取消，核对同一笔订单。'), '取消未完成，请重试。')
+    return false
+  } finally { if (current(operation)) cancellationBusy.value = false }
+}
+
 export function useCart() {
   const refresh = () => refreshCart()
   return { cart, loading, error, notice, count, refresh, clear, add, update, remove, addConfiguration, removeConfiguration,
     editing, startEdit, cancelEdit, leaveEdit: finishEdit, replaceConfiguration, checkoutPreview, orderAttempt, orderBusy, createOrder, order, loadOrder,
-    orderHistory, historyLoading, loadOrders, paymentBusy, payOrder }
+    orderHistory, historyLoading, loadOrders, paymentBusy, payOrder, cancellationBusy, cancelOrder }
 }
