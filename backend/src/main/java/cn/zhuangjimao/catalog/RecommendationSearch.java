@@ -9,6 +9,7 @@ import java.util.*;
 public final class RecommendationSearch {
     public static final int CANDIDATE_LIMIT = 15;
     public static final int BEAM_WIDTH = 64;
+    private static final int FAILURE_INSPECTION_LIMIT = 4096;
     private static final List<HardwareCategory> ORDER = List.of(HardwareCategory.CPU, HardwareCategory.MOTHERBOARD,
             HardwareCategory.MEMORY, HardwareCategory.SSD, HardwareCategory.COOLER, HardwareCategory.CASE,
             HardwareCategory.GPU, HardwareCategory.PSU);
@@ -16,7 +17,7 @@ public final class RecommendationSearch {
     private RecommendationSearch() {}
 
     public record Candidate(HardwareCategory category, long productId, int quantity, BigDecimal price,
-                            BigDecimal contribution, JsonNode parameters, boolean integrated) {}
+                            BigDecimal contribution, JsonNode parameters, boolean integrated, BigDecimal score) {}
     public record Plan(Map<HardwareCategory, Candidate> parts, BigDecimal total, BigDecimal utility) {
         public int memoryQuantity() { return parts.containsKey(HardwareCategory.MEMORY) ? parts.get(HardwareCategory.MEMORY).quantity() : 1; }
         public Map<HardwareCategory, Long> selections() {
@@ -35,10 +36,8 @@ public final class RecommendationSearch {
             var left = a.parts().get(category); var right = b.parts().get(category);
             int compared = Long.compare(left == null ? 0 : left.productId(), right == null ? 0 : right.productId());
             if (compared != 0) return compared;
-            compared = Integer.compare(left == null ? 0 : left.quantity(), right == null ? 0 : right.quantity());
-            if (compared != 0) return compared;
         }
-        return 0;
+        return Integer.compare(a.memoryQuantity(), b.memoryQuantity());
     }
     private static final Comparator<Plan> CHEAP = Comparator.comparing(Plan::total).thenComparing(RecommendationSearch::identities);
     private static final Comparator<Plan> STRONG = Comparator.comparing(Plan::utility).reversed().thenComparing(CHEAP);
@@ -75,9 +74,7 @@ public final class RecommendationSearch {
                 parts.putAll(plan.parts()); parts.put(category, candidate);
                 var next = new Plan(Collections.unmodifiableMap(parts), total, plan.utility().add(candidate.contribution()));
                 if (category == HardwareCategory.GPU && candidate.productId() == 0 && next.integratedGraphicsCpuId() == null) continue;
-                var parameters = new EnumMap<HardwareCategory, JsonNode>(HardwareCategory.class);
-                parts.forEach((code, item) -> { if (item.productId() > 0) parameters.put(code, item.parameters()); });
-                if (CompatibilityRules.canComplete(parameters, next.memoryQuantity())) expanded.add(next);
+                if (CompatibilityRules.canComplete(parameters(parts), next.memoryQuantity())) expanded.add(next);
             }
             var retained = new LinkedHashSet<Plan>();
             expanded.stream().sorted(CHEAP).limit(BEAM_WIDTH / 2).forEach(retained::add);
@@ -86,5 +83,49 @@ public final class RecommendationSearch {
             beam = List.copyOf(retained);
         }
         return beam;
+    }
+
+    enum FailureEvidence { INCOMPATIBLE, ABOVE_BUDGET, UNVERIFIED, WITHIN_BUDGET, NOT_SEARCHED }
+
+    /** Only an exhaustive inspection of the untruncated pools can prove a stronger failure than a beam miss. */
+    static FailureEvidence inspectFailure(Map<HardwareCategory, List<Candidate>> pools, BigDecimal budget) {
+        long combinations = 1;
+        for (var category : ORDER) {
+            combinations *= pools.get(category).size();
+            if (combinations > FAILURE_INSPECTION_LIMIT) return FailureEvidence.NOT_SEARCHED;
+        }
+        return inspect(pools, budget, new EnumMap<>(HardwareCategory.class), BigDecimal.ZERO, 0);
+    }
+
+    private static FailureEvidence inspect(Map<HardwareCategory, List<Candidate>> pools, BigDecimal budget,
+                                           EnumMap<HardwareCategory, Candidate> parts, BigDecimal total, int step) {
+        if (step == ORDER.size()) {
+            if (parts.get(HardwareCategory.GPU).productId() == 0 && !parts.get(HardwareCategory.CPU).integrated())
+                return FailureEvidence.INCOMPATIBLE;
+            return switch (CompatibilityRules.candidateState(parameters(parts), parts.get(HardwareCategory.MEMORY).quantity())) {
+                case FAIL -> FailureEvidence.INCOMPATIBLE;
+                case PASS -> total.compareTo(budget) > 0 ? FailureEvidence.ABOVE_BUDGET : FailureEvidence.WITHIN_BUDGET;
+                default -> FailureEvidence.UNVERIFIED;
+            };
+        }
+        var evidence = FailureEvidence.INCOMPATIBLE;
+        var category = ORDER.get(step);
+        for (var candidate : pools.get(category)) {
+            parts.put(category, candidate);
+            var branch = inspect(pools, budget, parts, total.add(candidate.price()), step + 1);
+            if (branch == FailureEvidence.WITHIN_BUDGET) return branch;
+            if (branch == FailureEvidence.UNVERIFIED
+                    || branch == FailureEvidence.ABOVE_BUDGET && evidence == FailureEvidence.INCOMPATIBLE)
+                evidence = branch;
+        }
+        return evidence;
+    }
+
+    private static Map<HardwareCategory, JsonNode> parameters(Map<HardwareCategory, Candidate> parts) {
+        var parameters = new EnumMap<HardwareCategory, JsonNode>(HardwareCategory.class);
+        parts.forEach((category, candidate) -> {
+            if (candidate.productId() > 0) parameters.put(category, candidate.parameters());
+        });
+        return parameters;
     }
 }

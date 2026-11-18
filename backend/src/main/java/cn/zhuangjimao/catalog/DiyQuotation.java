@@ -1,8 +1,10 @@
 package cn.zhuangjimao.catalog;
 
+import cn.zhuangjimao.compatibility.CompatibilityService;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -14,11 +16,23 @@ import java.util.Map;
 @Service
 class DiyQuotation {
     private final ProductMapper products;
+    private final DiyPerformance performance;
+    private final CompatibilityService compatibility;
 
-    DiyQuotation(ProductMapper products) { this.products = products; }
+    DiyQuotation(ProductMapper products, DiyPerformance performance, CompatibilityService compatibility) {
+        this.products = products;
+        this.performance = performance;
+        this.compatibility = compatibility;
+    }
 
     @Transactional(readOnly = true)
-    public Quote quote(long revision, Map<HardwareCategory, Long> selections, int memoryQuantity) {
+    public Quote quote(long revision, Map<HardwareCategory, Long> selections, int memoryQuantity) throws Exception {
+        return quote(revision, selections, memoryQuantity, false, false);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public Quote quote(long revision, Map<HardwareCategory, Long> selections, int memoryQuantity,
+                       boolean assessPerformance, boolean integrated) throws Exception {
         var items = new ArrayList<Item>();
         BigDecimal subtotal = new BigDecimal("0.00");
         for (var category : HardwareCategory.values()) {
@@ -38,7 +52,12 @@ class DiyQuotation {
             items.add(new Item(category, id, quantity, state, message, product, amount));
         }
         boolean valid = items.stream().allMatch(item -> item.state().equals("VALID"));
-        return new Quote(revision, List.copyOf(items), valid ? subtotal : null, subtotal, "NOT_CHECKED");
+        var assessment = assessPerformance ? performance.assess(items, integrated) : null;
+        var integratedCpuId = integrated ? selections.get(HardwareCategory.CPU) : null;
+        if (assessment != null && assessment.score() != null
+                && !compatibility.check(revision, selections, integratedCpuId, memoryQuantity).corePassed())
+            assessment = null;
+        return new Quote(revision, List.copyOf(items), valid ? subtotal : null, subtotal, "NOT_CHECKED", assessment);
     }
 
     @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -48,5 +67,5 @@ class DiyQuotation {
     record Quote(long revision, List<Item> items,
                  @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal total,
                  @JsonFormat(shape = JsonFormat.Shape.STRING) BigDecimal validSubtotal,
-                 String compatibility) {}
+                 String compatibility, @JsonInclude(JsonInclude.Include.NON_NULL) DiyPerformance.Assessment assessment) {}
 }

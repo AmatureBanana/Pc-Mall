@@ -3,14 +3,16 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElButton, ElDialog, ElEmpty, ElMessage, ElSkeleton } from 'element-plus'
 import HardwareIcon from './HardwareIcon.vue'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
+import ScoreDisplay from './ScoreDisplay.vue'
 import { formatPrice, formatParameter, imageFallback, loadProduct, loadProducts } from './catalog'
-import { hardwareCategories, hardwareDisplayOrder, hardwareLabels, type HardwareCategory } from './diy'
+import { hardwareCategories, hardwareDisplayOrder, hardwareLabels, isDiyAssessment, isManualWorkspace, type HardwareCategory } from './diy'
 import { useCatalogRequest } from './useCatalogRequest'
 import { useDiyWorkspace } from './useDiyWorkspace'
 import { signedIn } from './auth'
 import { useCart } from './cart'
 import { beginWorkspaceSignIn } from './workspaceSession'
-import { takeRecommendation, recommendedWorkspace, type OfficePlan } from './recommendation'
+import { takeRecommendation, recommendedWorkspace, recommendationScenarios, scoreComponents, scoreLabels,
+  type RecommendationPlan } from './recommendation'
 
 const activeCategory = ref<HardwareCategory>('CPU')
 const searchInput = ref('')
@@ -34,7 +36,27 @@ watch(editing, (edit, previous) => {
 }, { immediate: true })
 const { data: quote, status: quoteStatus, error: quoteError, refresh: refreshQuote } = quotation
 const { data: check, status: checkStatus, error: checkError, refresh: refreshCheck } = compatibility
-const importedRecommendation = ref<OfficePlan | null>(null)
+const showPerformance = computed(() => !editing.value && isManualWorkspace(workspace.value))
+const assessment = computed(() => {
+  const result = quote.value?.assessment
+  return quoteStatus.value === 'ready' && quote.value?.revision === workspace.value.revision && quote.value.total !== null
+    && checkStatus.value === 'ready' && check.value?.revision === workspace.value.revision
+    && check.value.complete && check.value.corePassed && isDiyAssessment(result) ? result : null
+})
+const performanceScenes = {
+  BELOW_OFFICE: '尚未达到办公档', OFFICE: '推荐办公', GAMING: '推荐游戏、办公', CREATION: '推荐创作、游戏、办公',
+}
+function formatDiyScore(score: string) {
+  const [whole, decimal = ''] = score.split('.')
+  return `${whole}.${decimal.padEnd(2, '0').slice(0, 2)}`
+}
+const importedRecommendation = ref<RecommendationPlan | null>(null)
+const importedPolicy = computed(() => importedRecommendation.value && recommendationScenarios[importedRecommendation.value.scenario])
+const importedWeights = computed(() => {
+  const weights = importedRecommendation.value?.weights
+  if (!weights) return ''
+  return scoreComponents.filter(key => weights[key] > 0).map(key => `${scoreLabels[key]} ${weights[key]}%`).join(' / ')
+})
 const recommendationExpired = ref(false)
 function expireRecommendation() {
   if (importedRecommendation.value) { importedRecommendation.value = null; recommendationExpired.value = true }
@@ -49,7 +71,7 @@ watch([quote, check], ([currentQuote, currentCheck]) => {
       return item.state !== 'VALID' || !before || item.product?.revision !== before.product?.revision
     }))) expireRecommendation()
   if (currentCheck && currentCheck.revision === workspace.value.revision
-    && (!currentCheck.corePassed || currentCheck.ruleVersion !== original.compatibility.ruleVersion)) expireRecommendation()
+    && (!currentCheck.corePassed || currentCheck.catalogVersion !== original.compatibility.catalogVersion)) expireRecommendation()
 })
 onMounted(() => {
   const recommendation = takeRecommendation()
@@ -206,12 +228,6 @@ onMounted(() => { void refresh() })
       <span class="workspace-badge"><HardwareIcon name="alert"/>当前为装机方案编辑页，可随时修订配置</span>
     </div>
     <p v-if="storageWarning" class="diy-warning" role="alert">{{ storageWarning }}</p>
-    <section v-if="importedRecommendation" class="diy-restoration" aria-label="办公推荐说明">
-      <h2>办公推荐 · 办公评分 {{ Number(importedRecommendation.score).toFixed(2) }} / 100</h2>
-      <p>推荐时总价 ¥{{ formatPrice(importedRecommendation.total) }}，预算 ¥{{ formatPrice(importedRecommendation.budget) }}。当前价格、库存与兼容性以工作区重新检测为准。</p>
-      <p>CPU 50% / 内存容量 30% / SSD 容量 20%；调整配置后旧推荐解释失效，DIY 不再受原预算约束。</p>
-    </section>
-    <p v-if="recommendationExpired" class="diy-warning" role="status">配置或商品数据已变化，旧推荐评分与解释已失效；请以当前报价和兼容检测为准。</p>
     <section v-if="restoration.phase !== 'idle'" class="diy-restoration" :class="'restoration-' + restoration.phase"
       role="region" aria-label="登录恢复" aria-live="polite">
       <div class="restoration-head">
@@ -286,6 +302,27 @@ onMounted(() => { void refresh() })
             <p v-if="quoteStatus === 'ready' && quote?.total === null" class="diy-warning" role="alert">部分选择不可售，请替换或移除。可售项小计 ¥{{ formatPrice(quote.validSubtotal) }}，不是完整配置报价。</p>
             <p v-if="quoteStatus === 'error'" class="diy-warning" role="alert">{{ quoteError }}</p>
             <div class="diy-quote-meta"><span>已选择 {{ count }} / 8 项 · 修订 {{ workspace.revision }}</span><button :disabled="quoteStatus === 'loading' || restoration.phase === 'running'" @click="refreshQuote(); refreshCheck()">{{ quoteStatus === 'error' ? '重试参考报价' : '刷新价格与库存' }}</button></div>
+
+            <section v-if="importedRecommendation && importedPolicy" class="diy-performance" :aria-label="`${importedPolicy.label}推荐说明`">
+              <ScoreDisplay :label="`${importedPolicy.label}评分`" :score="Number(importedRecommendation.score).toFixed(2)"/>
+              <p>推荐时总价 ¥{{ formatPrice(importedRecommendation.total) }}，预算 ¥{{ formatPrice(importedRecommendation.budget) }}。当前价格、库存与兼容性以工作区重新检测为准。</p>
+              <p>{{ importedWeights }}。调整配置后会重新评估整机性能。</p>
+            </section>
+
+            <section v-else-if="showPerformance" class="diy-performance" aria-label="整机性能" aria-live="polite">
+              <ScoreDisplay label="整机性能" :score="assessment?.score != null ? formatDiyScore(assessment.score) : undefined"/>
+              <template v-if="assessment?.scenario">
+                <p class="diy-performance-scenario">{{ performanceScenes[assessment.scenario] }}</p>
+                <p v-if="Number(assessment.score) < 100">限制分档 · {{ assessment.bottlenecks.join('、') }}</p>
+                <p v-if="assessment.weightedScore != null">同档参考分 {{ Number(assessment.weightedScore).toFixed(2) }} / 100</p>
+              </template>
+              <p v-else-if="assessment">评分待核验 · {{ assessment.missing.join('、') }}</p>
+              <p v-else-if="count < 8">选齐配件后计算</p>
+              <p v-else-if="quoteStatus === 'loading' || checkStatus === 'loading'">正在评估…</p>
+              <p v-else-if="!check?.corePassed || quote?.total == null">评分需当前配置可售且通过兼容性检查</p>
+              <p v-else>评分暂不可用</p>
+            </section>
+            <p v-if="recommendationExpired" class="diy-warning" role="status">配置或商品数据已变化，旧推荐评分与解释已失效。请以当前报价和兼容检测为准。</p>
 
             <section class="diy-status-note" aria-label="兼容分项诊断" :aria-busy="checkStatus === 'loading'">
               <div class="revision-section-heading"><h3><HardwareIcon name="shield"/>兼容性检查</h3><span :class="'check-' + checkTone"><HardwareIcon :name="checkTone === 'pass' ? 'check' : 'alert'"/>{{ storyState }}</span></div>
@@ -494,6 +531,9 @@ onMounted(() => { void refresh() })
 .diy-quote-meta { display: flex; justify-content: space-between; gap: 7px; align-items: center; font-size: 10px; color: #7485a6; margin-top: -5px; }
 .diy-quote-meta button { border: 0; background: transparent; color: #4774b4; padding: 0; white-space: nowrap; font-size: inherit; }
 .diy-quote-meta button:disabled { color: #8799b6; }
+.diy-performance { padding: 12px 15px; border: 1px solid #d8e5f9; border-radius: 10px; background: #eaf2ff; color: #304b70; }
+.diy-performance p { margin: 5px 0 0; font-size: 12px; line-height: 1.6; color: #536886; }
+.diy-performance .diy-performance-scenario { font-weight: 700; color: #17457f; }
 .diy-status-note, .diy-suggestions { border: 1px solid #e0e7f5; border-radius: 11px; overflow: hidden; }
 .revision-section-heading { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 10px; background: linear-gradient(100deg, #f7faff, #eaf1ff); }
 .revision-section-heading h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 18px; color: #0d172c; }

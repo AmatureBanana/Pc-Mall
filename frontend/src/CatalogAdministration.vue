@@ -202,6 +202,7 @@ watch([error, notice], async () => {
         </div>
         <legend class="admin-parameters-title">{{ categories.find(c => c.code === form.category)?.label }}专属参数</legend>
         <p class="admin-form-hint">空值表示未核验；标记“上架必需”的字段须补齐，并提供来源地址。功率使用 W，尺寸使用 mm；集合可按 Ctrl 多选。</p>
+        <p v-if="detail && form.category === 'CPU'" class="admin-form-hint">更改品牌或型号时，先清空 Geekbench 7 单核和多核成绩。保存会移除这些字段的旧来源，之后按新型号补录。</p>
         <p v-if="detail && ['MEMORY', 'SSD'].includes(form.category)" class="admin-form-hint">更改品牌或型号时，先清空旧的{{ form.category === 'MEMORY' ? '标称速率、时序对应速率和时序' : '顺序读写速度' }}。保存会移除这些字段的旧来源，之后按新型号补录。</p>
         <div class="admin-parameter-grid">
           <section v-for="(field, index) in schema" :key="field.code" class="admin-parameter"><header><strong>{{ field.label }}</strong><small v-if="field.required">上架必需</small></header>

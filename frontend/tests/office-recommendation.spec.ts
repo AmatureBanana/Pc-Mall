@@ -29,7 +29,7 @@ test('task21: office budget creates a real scored plan and imports all selection
   expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!).selections)).toEqual(saved.selections)
 })
 
-test('task21: invalid budgets do not request recommendations and no-result remains editable', async ({ page }) => {
+test('invalid budgets do not request recommendations and a proven budget failure remains editable', async ({ page }) => {
   const requests: string[] = []
   page.on('request', request => { if (request.url().endsWith('/api/recommendations')) requests.push(request.postData()!) })
   await page.goto('/')
@@ -43,7 +43,7 @@ test('task21: invalid budgets do not request recommendations and no-result remai
   expect(requests).toEqual([])
   await dialog.getByLabel('预算（CNY）').fill('1')
   await dialog.getByRole('button', { name: '生成办公方案', exact: true }).click()
-  await expect(dialog.getByRole('status')).toContainText('未找到')
+  await expect(dialog.getByRole('status')).toContainText('价格下界')
   await expect(dialog.getByRole('button', { name: '转入 DIY 调整' })).toHaveCount(0)
 })
 

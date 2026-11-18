@@ -54,28 +54,7 @@ test('task21: catalog navigation, product details and global search still reach 
   await expect(page.getByRole('main', { name: 'DIY 装机推荐' })).toBeVisible()
 })
 
-for (const name of ['游戏推荐', '创作推荐']) {
-  test(`task21: ${name} explains availability and can continue to manual DIY without a fake result`, async ({ page }) => {
-    const mutations: string[] = []
-    page.on('request', request => {
-      if (request.method() !== 'GET' && request.url().includes('/api/')) mutations.push(request.url())
-    })
-    await page.goto('/')
-    const card = page.getByRole('article').filter({ has: page.getByRole('heading', { name, exact: true }) })
-    await card.getByRole('button').click()
-    const dialog = page.getByRole('dialog', { name, exact: true })
-    await expect(dialog.getByRole('status')).toContainText('即将开放')
-    await dialog.getByRole('button', { name: '返回选择' }).click()
-    await expect(dialog).not.toBeVisible()
-    expect(mutations).toEqual([])
-    await card.getByRole('button').click()
-    await dialog.getByRole('button', { name: '开始手动 DIY', exact: true }).click()
-    await expect(page).toHaveURL(/#diy$/)
-    await expect(page.getByRole('region', { name: '当前配置' })).toBeVisible()
-  })
-}
-
-test('task21: the mobile welcome screen and availability dialog fit the viewport', async ({ page }) => {
+test('task21: the mobile welcome screen and recommendation dialog fit the viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
   const welcome = page.getByRole('main', { name: 'DIY 装机推荐' })

@@ -261,6 +261,28 @@ class CatalogAdministrationTest {
         }
     }
 
+    @Test void aCpuModelChangeRequiresClearingItsBenchmarkValuesAndSources() throws Exception {
+        var input = fullProduct(prefix + "cpu-benchmark", "CPU");
+        var parameters = json.createArrayNode();
+        parameters.add(json.valueToTree(parameter("geekbench7SingleCore", 2000, "分")));
+        parameters.add(json.valueToTree(parameter("geekbench7MultiCore", 10000, "分")));
+        input.set("parameters", parameters);
+        var created = post(admin, "/api/admin/products", input);
+        assertThat(created.statusCode()).as(created.body()).isEqualTo(201);
+        var path = "/api/admin/products/" + data(created).path("product").path("id").asLong();
+        input.remove(List.of("sku", "category", "price"));
+        input.put("revision", 0).put("model", "更新型号");
+
+        var rejected = post(admin, path, input);
+        assertThat(rejected.statusCode()).isEqualTo(400);
+        assertThat(rejected.body()).contains("Geekbench 7");
+
+        parameters.forEach(field -> ((com.fasterxml.jackson.databind.node.ObjectNode) field).putNull("value"));
+        var saved = post(admin, path, input);
+        assertThat(saved.statusCode()).as(saved.body()).isEqualTo(200);
+        assertThat(data(saved).path("parameters")).isEmpty();
+    }
+
     com.fasterxml.jackson.databind.node.ObjectNode fullProduct(String sku,String category) {
         return json.createObjectNode().put("sku",sku).put("category",category).put("name","测试商品").put("brand","测试品牌")
                 .put("model","准确型号").put("summary","测试摘要").put("description","测试描述").put("imageUrl","/images/psu.svg")

@@ -3,13 +3,13 @@ import { ref } from 'vue'
 import { ElButton, ElDialog } from 'element-plus'
 import HardwareIcon from './HardwareIcon.vue'
 import DiyWelcomeArt from './DiyWelcomeArt.vue'
-import OfficeRecommendation from './OfficeRecommendation.vue'
+import ScenarioRecommendation from './ScenarioRecommendation.vue'
 
 const emit = defineEmits<{ 'start-diy': [] }>()
 const scenarios = [
-  { code: 'office', name: '办公推荐', description: '适合日常办公、学习和轻度应用，稳定高效，安静省心。', tags: ['稳定安静', '性价比', '日常多任务'], action: '开始推荐' },
-  { code: 'gaming', name: '游戏推荐', description: '面向游戏与电竞体验，搭配适合你的处理器、显卡与散热。', tags: ['游戏体验', '独立显卡', '散热搭配'], action: '开始推荐' },
-  { code: 'creation', name: '创作推荐', description: '面向视频剪辑、3D 渲染、设计创作等高负载工作。', tags: ['多核性能', '大内存', '高速存储'], action: '查看方案' },
+  { code: 'office', scenario: 'OFFICE', name: '办公推荐', description: '适合日常办公、学习和轻度应用，稳定高效，安静省心。', tags: ['稳定安静', '性价比', '日常多任务'], action: '开始推荐' },
+  { code: 'gaming', scenario: 'GAMING', name: '游戏推荐', description: '面向游戏与电竞体验，搭配适合你的处理器、显卡与散热。', tags: ['游戏体验', '独立显卡', '散热搭配'], action: '开始推荐' },
+  { code: 'creation', scenario: 'CREATION', name: '创作推荐', description: '面向视频剪辑、3D 渲染、设计创作等高负载工作。', tags: ['多核性能', '大内存', '高速存储'], action: '查看方案' },
 ] as const
 const selectedScenario = ref<(typeof scenarios)[number] | null>(null)
 function startDiy() { selectedScenario.value = null; emit('start-diy') }
@@ -54,12 +54,9 @@ function startDiy() { selectedScenario.value = null; emit('start-diy') }
       <p class="welcome-tip"><HardwareIcon name="info"/><span><strong>提示：</strong>推荐方案仅作起点，你仍可在后续步骤中调整配置。</span></p>
     </div>
 
-    <ElDialog :model-value="selectedScenario?.code === 'office'" title="办公推荐" width="680px" class="welcome-office-dialog" @close="selectedScenario = null" destroy-on-close>
-      <OfficeRecommendation v-if="selectedScenario?.code === 'office'" @start-diy="startDiy"/>
-    </ElDialog>
-    <ElDialog :model-value="selectedScenario !== null && selectedScenario.code !== 'office'" :title="selectedScenario?.name" width="460px" class="welcome-dialog" @close="selectedScenario = null">
-      <p class="welcome-availability" role="status">{{ selectedScenario?.name }}即将开放，你可以先进入 DIY 工作区自由搭配硬件。</p>
-      <template #footer><ElButton @click="selectedScenario = null">返回选择</ElButton><ElButton type="primary" @click="startDiy">开始手动 DIY</ElButton></template>
+    <ElDialog :model-value="selectedScenario !== null" :title="selectedScenario?.name" width="680px"
+      class="welcome-recommendation-dialog" @close="selectedScenario = null" destroy-on-close>
+      <ScenarioRecommendation v-if="selectedScenario" :key="selectedScenario.code" :scenario="selectedScenario.scenario" @start-diy="startDiy"/>
     </ElDialog>
   </main>
 </template>
@@ -99,7 +96,6 @@ function startDiy() { selectedScenario.value = null; emit('start-diy') }
 .welcome-tip { display: flex; align-items: center; gap: 12px; min-height: 50px; padding: 12px 24px; border-radius: 15px; margin: 20px 0 0; background: linear-gradient(100deg, #eff5ff, #e5eeff); color: #445574; font-size: 15px; line-height: 1.8; }
 .welcome-tip svg { width: 21px; height: 21px; color: var(--blue); flex-shrink: 0; }
 .welcome-tip strong { margin-right: 5px; }
-.welcome-availability { margin: 4px 0 12px; line-height: 1.9; color: #455977; }
 @media (max-width: 1350px) {
   .welcome-hero { padding-inline: 36px; }
   .welcome-hero-art { right: 0; width: 300px; }
@@ -157,6 +153,6 @@ function startDiy() { selectedScenario.value = null; emit('start-diy') }
 
 <style>
 /* Element Plus teleports dialogs outside this component's scoped DOM. */
-.welcome-office-dialog.el-dialog { width: min(680px, calc(100% - 24px)); margin-block: 5vh; }
-.welcome-office-dialog .el-dialog__body { max-height: 75vh; overflow-y: auto; padding-right: 8px; }
+.welcome-recommendation-dialog.el-dialog { width: min(680px, calc(100% - 24px)); margin-block: 5vh; }
+.welcome-recommendation-dialog .el-dialog__body { max-height: 75vh; overflow-y: auto; padding-right: 8px; }
 </style>
