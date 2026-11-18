@@ -78,6 +78,7 @@ test('an automatic save failure keeps editing available and never claims a succe
 test('F02 workspace: arbitrary order, replacement, removal, cancelled clear and tab refresh', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('link', { name: 'DIY 装机', exact: true }).click()
+  await page.getByRole('button', { name: '开始手动 DIY', exact: true }).click()
   const categories = page.getByRole('navigation', { name: 'DIY 硬件分类' })
   const configuration = page.getByRole('region', { name: '当前配置' })
   await expect(categories.getByRole('button')).toHaveCount(8)

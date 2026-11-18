@@ -35,6 +35,14 @@ public final class CompatibilityRules {
 
     private CompatibilityRules() {}
 
+    /** Pure incremental pruning for server-owned recommendation snapshots; pending parts may be added later. */
+    public static boolean canComplete(Map<HardwareCategory, JsonNode> parameters, int memoryQuantity) {
+        var parts = new java.util.EnumMap<HardwareCategory, Part>(HardwareCategory.class);
+        parameters.forEach((category, fields) -> parts.put(category,
+                new Part(category, fields, category == MEMORY ? memoryQuantity : 1)));
+        return check(parts).stream().noneMatch(result -> result.state() == RuleState.FAIL || result.state() == RuleState.UNKNOWN);
+    }
+
     static List<RuleResult> check(Map<HardwareCategory, Part> parts) {
         return check(parts, parts.containsKey(GPU));
     }

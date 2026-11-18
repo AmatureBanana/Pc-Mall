@@ -10,6 +10,7 @@ import { useDiyWorkspace } from './useDiyWorkspace'
 import { signedIn } from './auth'
 import { useCart } from './cart'
 import { beginWorkspaceSignIn } from './workspaceSession'
+import { takeRecommendation, recommendedWorkspace, type OfficePlan } from './recommendation'
 
 const activeCategory = ref<HardwareCategory>('CPU')
 const searchInput = ref('')
@@ -33,6 +34,27 @@ watch(editing, (edit, previous) => {
 }, { immediate: true })
 const { data: quote, status: quoteStatus, error: quoteError, refresh: refreshQuote } = quotation
 const { data: check, status: checkStatus, error: checkError, refresh: refreshCheck } = compatibility
+const importedRecommendation = ref<OfficePlan | null>(null)
+const recommendationExpired = ref(false)
+function expireRecommendation() {
+  if (importedRecommendation.value) { importedRecommendation.value = null; recommendationExpired.value = true }
+}
+watch(() => workspace.value.revision, expireRecommendation, { flush: 'sync' })
+watch([quote, check], ([currentQuote, currentCheck]) => {
+  const original = importedRecommendation.value
+  if (!original) return
+  if (currentQuote && currentQuote.revision === workspace.value.revision
+    && (currentQuote.total !== original.total || currentQuote.items.some(item => {
+      const before = original.items.find(part => part.productId === item.productId)
+      return item.state !== 'VALID' || !before || item.product?.revision !== before.product?.revision
+    }))) expireRecommendation()
+  if (currentCheck && currentCheck.revision === workspace.value.revision
+    && (!currentCheck.corePassed || currentCheck.ruleVersion !== original.compatibility.ruleVersion)) expireRecommendation()
+})
+onMounted(() => {
+  const recommendation = takeRecommendation()
+  if (recommendation) { load(recommendedWorkspace(recommendation)); importedRecommendation.value = recommendation }
+})
 const { data: products, status, error, refresh } = useCatalogRequest(
   signal => loadProducts(signal, activeCategory.value, keyword.value), '候选商品')
 const displayCategories = hardwareDisplayOrder.map(code => hardwareCategories.find(item => item.code === code)!)
@@ -184,6 +206,12 @@ onMounted(() => { void refresh() })
       <span class="workspace-badge"><HardwareIcon name="alert"/>当前为装机方案编辑页，可随时修订配置</span>
     </div>
     <p v-if="storageWarning" class="diy-warning" role="alert">{{ storageWarning }}</p>
+    <section v-if="importedRecommendation" class="diy-restoration" aria-label="办公推荐说明">
+      <h2>办公推荐 · 办公评分 {{ Number(importedRecommendation.score).toFixed(2) }} / 100</h2>
+      <p>推荐时总价 ¥{{ formatPrice(importedRecommendation.total) }}，预算 ¥{{ formatPrice(importedRecommendation.budget) }}。当前价格、库存与兼容性以工作区重新检测为准。</p>
+      <p>CPU 50% / 内存容量 30% / SSD 容量 20%；调整配置后旧推荐解释失效，DIY 不再受原预算约束。</p>
+    </section>
+    <p v-if="recommendationExpired" class="diy-warning" role="status">配置或商品数据已变化，旧推荐评分与解释已失效；请以当前报价和兼容检测为准。</p>
     <section v-if="restoration.phase !== 'idle'" class="diy-restoration" :class="'restoration-' + restoration.phase"
       role="region" aria-label="登录恢复" aria-live="polite">
       <div class="restoration-head">

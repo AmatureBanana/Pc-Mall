@@ -79,7 +79,7 @@ test('administrator adjusts price and available stock with reasons, sees conflic
     await admin.getByRole('button', { name: '返回商品列表' }).click()
     await expect(admin.getByRole('row').filter({ hasText: sku })).toContainText('322.10')
     await expect(admin.getByRole('row').filter({ hasText: sku })).toContainText('可售 7')
-    await page.goto('/')
+    await page.goto('/#catalog')
     const card = page.locator('.product-card').filter({ hasText: '价格库存浏览器测试电源' })
     await expect(card).toContainText('322.10')
     await expect(card).toContainText('库存 7 件')

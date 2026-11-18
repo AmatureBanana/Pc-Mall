@@ -1,6 +1,7 @@
 package cn.zhuangjimao.cart;
 
 import cn.zhuangjimao.catalog.ProductInventory;
+import cn.zhuangjimao.audit.AdministrationAudit;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import org.springframework.http.HttpStatus;
@@ -24,13 +25,15 @@ public class SingleItemOrders {
     private final ProductInventory inventory;
     private final OrderMapper orders;
     private final Clock clock;
+    private final AdministrationAudit audit;
 
-    SingleItemOrders(CartMapper carts, ShoppingCart quotations, ProductInventory inventory, OrderMapper orders, Clock clock) {
+    SingleItemOrders(CartMapper carts, ShoppingCart quotations, ProductInventory inventory, OrderMapper orders, Clock clock, AdministrationAudit audit) {
         this.carts = carts;
         this.quotations = quotations;
         this.inventory = inventory;
         this.orders = orders;
         this.clock = clock;
+        this.audit = audit;
     }
 
     // Every mutable input is protected by a row lock. READ_COMMITTED avoids locking an absent
@@ -99,6 +102,7 @@ public class SingleItemOrders {
                 order.createdAt().toInstant(ZoneOffset.UTC), order.paymentDeadline().toInstant(ZoneOffset.UTC),
                 order.paidAt() == null ? null : order.paidAt().toInstant(ZoneOffset.UTC),
                 order.cancelledAt() == null ? null : order.cancelledAt().toInstant(ZoneOffset.UTC), order.cancellationReason(),
+                order.completedAt() == null ? null : order.completedAt().toInstant(ZoneOffset.UTC), order.completedBy(),
                 orders.items(order.orderNumber()), orders.configurations(order.orderNumber()));
     }
 
@@ -119,6 +123,24 @@ public class SingleItemOrders {
         var paidAt = LocalDateTime.ofInstant(now.truncatedTo(ChronoUnit.MICROS), ZoneOffset.UTC);
         if (orders.pay(accountId, number, paidAt) != 1) throw new IllegalStateException("Order changed under its lock");
         return view(accountId, number);
+    }
+
+    /** Administrator completion shares the lifecycle row lock and never touches inventory. */
+    @Transactional(isolation = Isolation.READ_COMMITTED, rollbackFor = Exception.class)
+    public View complete(String number, String actor) throws Exception {
+        var buyer = orders.buyer(number);
+        if (buyer == null) throw new CartException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "订单不存在。");
+        var order = orders.lockOrder(buyer.id(), number);
+        if (order.status().equals("COMPLETED")) return snapshot(order);
+        if (!order.status().equals("PAID")) {
+            throw new CartException(HttpStatus.CONFLICT, "ORDER_NOT_COMPLETABLE", "仅已支付订单可以完成交易。");
+        }
+        var before = snapshot(order);
+        var now = LocalDateTime.ofInstant(clock.instant().truncatedTo(ChronoUnit.MICROS), ZoneOffset.UTC);
+        if (orders.complete(number, now, actor) != 1) throw new IllegalStateException("Order changed under its lock");
+        var after = view(buyer.id(), number);
+        audit.record(actor, "ORDER", orders.auditId(number), "COMPLETE", before, after);
+        return after;
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -183,6 +205,7 @@ public class SingleItemOrders {
     record View(String orderNumber, String status, String currency, @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal total,
                 Instant createdAt, Instant paymentDeadline, @JsonInclude(JsonInclude.Include.ALWAYS) Instant paidAt,
                 @JsonInclude(JsonInclude.Include.ALWAYS) Instant cancelledAt, @JsonInclude(JsonInclude.Include.ALWAYS) String cancellationReason,
+                @JsonInclude(JsonInclude.Include.ALWAYS) Instant completedAt, @JsonInclude(JsonInclude.Include.ALWAYS) String completedBy,
                 List<Item> items, List<Configuration> configurations) {}
     record Configuration(long id, @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal amount) {}
     record HistoryQuery(int page, int pageSize, String status, String keyword, LocalDate startDate, LocalDate endDate) {

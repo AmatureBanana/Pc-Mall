@@ -97,6 +97,7 @@ test('DIY confirms a whole configuration, shows success, and opens it from the m
       .map(([category, productId]) => ({ category, productId, source: 'DIY' })),
   })), Number(memory.id))
   await page.getByRole('link', { name: 'DIY 装机', exact: true }).click()
+  await page.getByRole('button', { name: '开始手动 DIY', exact: true }).click()
   const transfer = page.getByRole('button', { name: '转入购物车', exact: true })
   const confirmation = page.getByRole('dialog', { name: '转入购物车' })
   const header = page.locator('.header')
@@ -137,6 +138,7 @@ test('DIY confirms a whole configuration, shows success, and opens it from the m
   const group = cart.getByRole('region', { name: '装机方案 1' })
   await expect(group.getByRole('listitem')).toHaveCount(8)
   await header.getByRole('link', { name: 'DIY 装机', exact: true }).click()
+  await page.getByRole('button', { name: '开始手动 DIY', exact: true }).click()
   await expect(page.getByRole('region', { name: '当前配置' })).toContainText('已选择 0 / 8 项')
   expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!).selections)).toEqual([])
   await page.reload()
@@ -149,6 +151,7 @@ test('DIY confirms a whole configuration, shows success, and opens it from the m
   expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!).selections)).toEqual([])
   await header.getByRole('button', { name: /^购物车/ }).click()
   await header.getByRole('link', { name: 'DIY 装机', exact: true }).click()
+  await page.getByRole('button', { name: '开始手动 DIY', exact: true }).click()
   await expect(page.getByRole('region', { name: '当前配置' })).toContainText('已选择 0 / 8 项')
   await header.getByRole('button', { name: /^购物车/ }).click()
   await expect(group).toContainText('Intel Core i5-14600KF')

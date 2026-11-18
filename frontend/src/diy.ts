@@ -11,7 +11,7 @@ export const hardwareLabels: Record<HardwareCategory, string> = {
   CPU: 'CPU', MOTHERBOARD: '主板', GPU: '显卡', MEMORY: '内存',
   SSD: '硬盘', PSU: '电源', CASE: '机箱', COOLER: 'CPU 散热器',
 }
-export interface Selection { category: HardwareCategory; productId: number; source: 'DIY' }
+export interface Selection { category: HardwareCategory; productId: number; source: 'DIY' | 'RECOMMENDATION' }
 export interface Workspace { version: 1; revision: number; selections: Selection[]; integratedGraphicsCpuId?: number; memoryQuantity?: number }
 export const maxDiyMemoryQuantity = 4
 export interface QuoteItem {
@@ -64,7 +64,7 @@ export function restoreWorkspace(): { workspace: Workspace; warning: string } {
     if (!item || item.version !== 1 || !Number.isSafeInteger(item.revision) || item.revision < 0
       || item.revision >= Number.MAX_SAFE_INTEGER || !Array.isArray(item.selections) || item.selections.length > 8
       || !item.selections.every((selection: Selection) => selection && isCategory(selection.category)
-        && Number.isSafeInteger(selection.productId) && selection.productId > 0 && selection.source === 'DIY')
+        && Number.isSafeInteger(selection.productId) && selection.productId > 0 && ['DIY', 'RECOMMENDATION'].includes(selection.source))
       || item.memoryQuantity !== undefined && (!Number.isInteger(item.memoryQuantity) || item.memoryQuantity < 1
         || item.memoryQuantity > maxDiyMemoryQuantity
         || !item.selections.some((selection: Selection) => selection.category === 'MEMORY'))
