@@ -49,7 +49,7 @@ test('administrator creates a draft, sees duplicate SKU and publishing diagnosti
 })
 
 test('motherboard combinations remain readable publicly and administration filters expose typed existing parameters', async ({ page }) => {
-  await page.goto('/')
+  await page.goto('/#catalog')
   await page.locator('.product-card').filter({ hasText: 'B760M' }).getByRole('heading').getByRole('link').click()
   await expect(page.getByRole('dialog', { name: '商品详情' })).toContainText('M.2 2280 · PCIe · NVMe')
   await page.goto('/#login')

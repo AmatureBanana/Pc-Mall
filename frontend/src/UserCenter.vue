@@ -18,7 +18,7 @@ defineProps<{ section: string }>()
         :class="{ active: section === entry.route }" :aria-current="section === entry.route ? 'page' : undefined">
         <HardwareIcon :name="entry.icon"/>{{ entry.label }}
       </a></nav>
-      <a href="#" class="user-center-back"><HardwareIcon name="chevron-right"/>返回商城</a>
+      <a href="#catalog" class="user-center-back"><HardwareIcon name="chevron-right"/>返回商城</a>
     </aside>
     <div class="user-center-content"><slot/></div>
   </div>

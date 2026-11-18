@@ -7,6 +7,7 @@ import UserAvatar from './UserAvatar.vue'
 import { accountNavigation } from './accountNavigation'
 import CatalogAdministration from './CatalogAdministration.vue'
 import UserAdministration from './UserAdministration.vue'
+import OrderAdministration from './OrderAdministration.vue'
 import { useCart } from './cart'
 import { beginWorkspaceSignIn, endWorkspaceSignIn, signInOrigin, seenBaseline, restorationPending, workspaceActive } from './workspaceSession'
 
@@ -225,12 +226,12 @@ onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.
     <p class="auth-switch"><button :disabled="busy" @click="navigate(route === 'register' ? 'login' : 'register')">{{ route === 'register' ? '已有账户？去登录' : '还没有账户？去注册' }}</button></p>
   </ElDialog>
 
-  <ElDialog :model-value="adminOpen" title="管理后台" :width="selectedModule?.code === 'products' || selectedModule?.code === 'users' ? '1260px' : '900px'" class="admin-dialog" @close="adminOpen && navigate()">
+  <ElDialog :model-value="adminOpen" title="管理后台" :width="selectedModule?.code === 'products' || selectedModule?.code === 'users' || selectedModule?.code === 'orders' ? '1260px' : '900px'" class="admin-dialog" @close="adminOpen && navigate()">
     <p v-if="adminLoading" role="status">正在验证后台权限…</p>
     <div v-else-if="error" class="admin-feedback"><p role="alert" class="auth-error">{{ error }}</p><ElButton v-if="!user" type="primary" @click="navigate('login')">前往登录</ElButton><ElButton @click="loadAdmin">重试</ElButton><ElButton @click="navigate()">返回商城</ElButton></div>
     <div v-else class="admin-layout">
       <nav aria-label="后台模块"><button :class="{ active: !selectedModule }" @click="navigate('admin')">后台概览</button><button v-for="item in modules" :key="item.code" :class="{ active: selectedModule?.code === item.code }" @click="navigate(`admin/${item.code}`)">{{ item.title }}</button></nav>
-      <section class="admin-content"><CatalogAdministration v-if="selectedModule?.code === 'products'" @expired="profileExpired"/><UserAdministration v-else-if="selectedModule?.code === 'users'" @expired="profileExpired"/><template v-else-if="selectedModule"><h2>{{ selectedModule.title }}</h2><p>{{ selectedModule.description }}</p><p role="status" class="admin-availability">{{ selectedModule.availability }}</p><ElButton @click="navigate('admin')">返回概览</ElButton></template><template v-else><h2>商城管理中心</h2><p>请选择需要维护的模块。</p><div class="admin-module-grid"><button v-for="item in modules" :key="item.code" @click="navigate(`admin/${item.code}`)"><strong>{{ item.title }}</strong><span>{{ item.description }}</span></button></div></template></section>
+      <section class="admin-content"><CatalogAdministration v-if="selectedModule?.code === 'products'" @expired="profileExpired"/><UserAdministration v-else-if="selectedModule?.code === 'users'" @expired="profileExpired"/><OrderAdministration v-else-if="selectedModule?.code === 'orders'" @expired="profileExpired"/><template v-else-if="selectedModule"><h2>{{ selectedModule.title }}</h2><p>{{ selectedModule.description }}</p><p role="status" class="admin-availability">{{ selectedModule.availability }}</p><ElButton @click="navigate('admin')">返回概览</ElButton></template><template v-else><h2>商城管理中心</h2><p>请选择需要维护的模块。</p><div class="admin-module-grid"><button v-for="item in modules" :key="item.code" @click="navigate(`admin/${item.code}`)"><strong>{{ item.title }}</strong><span>{{ item.description }}</span></button></div></template></section>
     </div>
   </ElDialog>
 </template>

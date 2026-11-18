@@ -43,6 +43,8 @@ test('visitor registers, separately logs in, sees forbidden administration and l
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
   await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
   expect((await page.request.get('/api/auth/me')).status()).toBe(401)
+  await expect(page.getByRole('main', { name: 'DIY 装机推荐' })).toBeVisible()
+  await page.getByRole('link', { name: '商品浏览', exact: true }).click()
   await expect(page.locator('.product-card')).toHaveCount(13)
 })
 
@@ -62,7 +64,7 @@ test('administrator uses the unified login and can navigate every administration
     await expect(admin.getByRole('heading', { name: title })).toBeVisible()
     if (title === '商品管理') await expect(admin.getByRole('button', { name: '新增商品' })).toBeVisible()
     else if (title === '用户管理') await expect(admin.getByLabel('查询用户名')).toBeVisible()
-    else await expect(admin.getByRole('status')).toContainText('即将开放')
+    else await expect(admin.getByLabel('查询订单号')).toBeVisible()
   }
   await admin.getByRole('navigation').getByRole('button', { name: '后台概览' }).click()
   await expect(admin.getByRole('heading', { name: '商城管理中心' })).toBeVisible()

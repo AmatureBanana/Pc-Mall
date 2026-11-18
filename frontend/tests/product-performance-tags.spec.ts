@@ -12,14 +12,14 @@ test('storefront cards round score labels returned with two decimal places', asy
     await route.fulfill({ response, json: body })
   })
 
-  await page.goto('/')
+  await page.goto('/#catalog')
   const card = page.getByRole('article').filter({ hasText: '金士顿 FURY Beast' })
   await expect(card.getByText('综合评分 47.3分', { exact: true })).toBeVisible()
 })
 
 test('all catalog cards, searched products, details and administration show category-specific performance tags', async ({ page }) => {
   test.setTimeout(60000)
-  await page.goto('/')
+  await page.goto('/#catalog')
   const cards = page.getByRole('article')
   await expect(cards).toHaveCount(13)
   await expect(cards.getByRole('list', { name: '性能标签', exact: true })).toHaveCount(13)

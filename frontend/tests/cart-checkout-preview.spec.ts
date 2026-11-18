@@ -185,6 +185,7 @@ test('header DIY navigation exits group editing and restores the independent wor
   await page.getByRole('link', { name: '商品浏览', exact: true }).click()
   await expect(page.getByRole('region', { name: '商品列表', exact: true })).toBeVisible()
   await page.getByRole('link', { name: 'DIY 装机', exact: true }).click()
+  await page.getByRole('button', { name: '开始手动 DIY', exact: true }).click()
   await page.getByRole('button', { name: '替换 内存', exact: true }).click()
   await expect(page.getByLabel('当前内存根数')).toHaveText('2')
   await expect(page.getByRole('button', { name: '取消整组编辑' })).toHaveCount(0)

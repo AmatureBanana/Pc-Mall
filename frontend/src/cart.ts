@@ -22,6 +22,7 @@ export interface CheckoutPreview {
 export interface Order {
   orderNumber: string; status: 'PENDING_PAYMENT' | 'PAID' | 'CANCELLED' | 'COMPLETED'; currency: 'CNY'
   total: string; createdAt: string; paymentDeadline: string; paidAt: string | null
+  completedAt: string | null; completedBy: string | null
   cancelledAt: string | null; cancellationReason: 'USER' | 'TIMEOUT' | null
   items: { productId: number; sku: string; name: string; model: string; category: string; price: string
     quantity: number; amount: string; configurationId: number | null }[]

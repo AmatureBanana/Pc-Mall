@@ -10,6 +10,7 @@ test('7800X3D integrated build has verified power and can enter cart confirmatio
       .map(([category, productId]) => ({ category, productId, source: 'DIY' })),
   })), memory)
   await page.getByRole('link', { name: 'DIY 装机', exact: true }).click()
+  await page.getByRole('button', { name: '开始手动 DIY', exact: true }).click()
   const configuration = page.getByRole('region', { name: '当前配置' })
   await expect(configuration).toContainText('核显 · AMD Radeon Graphics')
   await expect(configuration.getByText('核心检测通过', { exact: true })).toBeVisible()

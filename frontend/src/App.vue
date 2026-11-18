@@ -7,6 +7,7 @@ import ProductDetail from './ProductDetail.vue'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
 import AccountPanel from './AccountPanel.vue'
 import DiyWorkspace from './DiyWorkspace.vue'
+import DiyWelcome from './DiyWelcome.vue'
 import CartPanel from './CartPanel.vue'
 import OrderPanel from './OrderPanel.vue'
 import OrderHistory from './OrderHistory.vue'
@@ -21,6 +22,7 @@ const { count: cartCount, leaveEdit } = useCart()
 const accountPanel = ref<InstanceType<typeof AccountPanel> | null>(null)
 function openCart() { window.location.hash = 'cart' }
 function openDiy() { leaveEdit(); window.location.hash = 'diy' }
+function openDiyWelcome() { leaveEdit(); window.location.hash = '' }
 
 const selectedCategory = ref<Category>('ALL')
 const searchInput = ref('')
@@ -35,6 +37,8 @@ const detailId = ref<string | null>(null)
 const orderNumber = ref<string | null>(null)
 const ordersOpen = ref(window.location.hash === '#orders')
 const diyOpen = ref(window.location.hash.startsWith('#diy'))
+const welcomeOpen = ref(!window.location.hash || window.location.hash === '#')
+const diySection = computed(() => diyOpen.value || welcomeOpen.value)
 const cartOpen = ref(window.location.hash === '#cart')
 const accountRoute = ref(window.location.hash.slice(1))
 const userCenterOpen = computed(() => ordersOpen.value || !!orderNumber.value || cartOpen.value || ['profile', 'security'].includes(accountRoute.value))
@@ -50,7 +54,7 @@ const visibleProducts = computed(() => {
   return items
 })
 function search() {
-  if (diyOpen.value || userCenterOpen.value) window.location.hash = ''
+  window.location.hash = 'catalog'
   const next = searchInput.value.trim()
   if (keyword.value === next) void refresh()
   else keyword.value = next
@@ -73,15 +77,18 @@ function resetFilters() {
 }
 function syncDetail() {
   const hash = window.location.hash
+  const previousRoute = accountRoute.value
   accountRoute.value = hash.slice(1)
   orderNumber.value = hash.startsWith('#order/') ? hash.slice(7) : null
   ordersOpen.value = hash === '#orders'
   cartOpen.value = hash === '#cart'
-  if (hash.startsWith('#diy')) diyOpen.value = true
-  else if (hash === '' || hash === '#' || hash.startsWith('#product/')) diyOpen.value = false
+  if (hash.startsWith('#diy')) { diyOpen.value = true; welcomeOpen.value = false }
+  else if (hash === '' || hash === '#') { diyOpen.value = false; welcomeOpen.value = true }
+  else if (hash === '#catalog' || hash.startsWith('#product/')) { diyOpen.value = false; welcomeOpen.value = false }
+  if (hash === '#catalog' && previousRoute !== 'catalog') void refresh()
   detailId.value = hash.startsWith('#product/') ? hash.slice(9) : hash.startsWith('#diy/product/') ? hash.slice(13) : null
 }
-function closeDetail() { window.location.hash = diyOpen.value ? 'diy' : '' }
+function closeDetail() { window.location.hash = diyOpen.value ? 'diy' : 'catalog' }
 /** The unified login is the only sign-in surface, so the detail dialog hands over to it. */
 function openDetailSignIn() { window.location.hash = 'login' }
 onMounted(() => {
@@ -93,19 +100,20 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
 </script>
 
 <template>
-  <div class="storefront" :class="{ 'storefront--diy': diyOpen && !userCenterOpen, 'storefront--cart': cartOpen, 'storefront--account': userCenterOpen }">
+  <div class="storefront" :class="{ 'storefront--diy': diySection && !userCenterOpen, 'storefront--cart': cartOpen, 'storefront--account': userCenterOpen }">
     <AccountPanel ref="accountPanel"/>
     <header class="header"><div class="header-inner page-width">
       <StoreBrand/>
-      <p v-if="!diyOpen && !userCenterOpen" class="tagline">专业 · 可靠 · 用心的电脑硬件商城</p>
-      <nav class="workspace-nav" aria-label="商城导航"><a href="#" :class="{ active: !diyOpen && !userCenterOpen }"><HardwareIcon name="grid"/>商品浏览</a><a href="#diy" :class="{ active: diyOpen && !userCenterOpen }" @click.prevent="openDiy"><HardwareIcon name="tools"/>DIY 装机</a></nav>
+      <p v-if="!diySection && !userCenterOpen" class="tagline">专业 · 可靠 · 用心的电脑硬件商城</p>
+      <nav class="workspace-nav" aria-label="商城导航"><a href="#catalog" :class="{ active: !diySection && !userCenterOpen }"><HardwareIcon name="grid"/>商品浏览</a><a href="#" :class="{ active: diySection && !userCenterOpen }" @click.prevent="openDiyWelcome"><HardwareIcon name="tools"/>DIY 装机</a></nav>
       <form class="search" role="search" @submit.prevent="search"><HardwareIcon name="search"/><input v-model="searchInput" aria-label="搜索商品" placeholder="搜索商品名称、型号或关键词（如：RTX 4070、i5、SSD …）" maxlength="100"/><ElButton native-type="submit" type="primary" class="search-button"><HardwareIcon name="search"/>搜索</ElButton></form>
       <button v-if="signedIn" type="button" class="header-cart" :aria-current="cartOpen ? 'page' : undefined" @click="openCart"><HardwareIcon name="cart"/>购物车<span v-if="cartCount" class="cart-count" :aria-label="`购物车共 ${cartCount} 件`">{{ cartCount }}</span><HardwareIcon name="chevron-right"/></button>
       <div id="header-account" class="header-account"/>
     </div></header>
-    <nav v-if="!diyOpen && !userCenterOpen" class="category-nav" aria-label="硬件分类"><div class="nav-inner page-width">
+    <nav v-if="!diySection && !userCenterOpen" class="category-nav" aria-label="硬件分类"><div class="nav-inner page-width">
       <button v-for="category in categories" :key="category.code" :class="{ active: selectedCategory === category.code }" :aria-pressed="selectedCategory === category.code" @click="selectedCategory = category.code"><HardwareIcon :name="category.icon"/>{{ category.label }}</button>
     </div></nav>
+    <DiyWelcome v-if="welcomeOpen && !userCenterOpen" @start-diy="openDiy"/>
     <DiyWorkspace v-if="diyOpen" v-show="!userCenterOpen"/>
     <UserCenter v-if="userCenterOpen" :section="accountSection">
       <OrderPanel v-if="orderNumber" :number="orderNumber"/>
@@ -116,7 +124,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
         @updated="accountPanel?.profileUpdated($event)" @expired="accountPanel?.profileExpired()"
         @password-changed="accountPanel?.passwordChanged()" @busy="accountPanel?.setProfileBusy($event)"/>
     </UserCenter>
-    <main v-else-if="!diyOpen" class="main page-width">
+    <main v-else-if="!diySection" class="main page-width">
       <aside class="sidebar" aria-label="商品筛选">
         <section class="filter-panel category-panel"><h2>商品分类</h2><div class="category-list"><button v-for="category in categories" :key="category.code" :class="{ active: selectedCategory === category.code }" :aria-pressed="selectedCategory === category.code" @click="selectedCategory = category.code"><HardwareIcon :name="category.icon"/><span>{{ category.label }}</span></button></div></section>
         <section class="filter-panel price-panel"><h2>价格区间</h2><form @submit.prevent="applyPrice"><div class="price-inputs"><label><span>¥</span><input v-model="minInput" aria-label="最低价" inputmode="decimal" placeholder="最低价"/></label><span class="range-dash">–</span><label><span>¥</span><input v-model="maxInput" aria-label="最高价" inputmode="decimal" placeholder="最高价"/></label></div><p v-if="filterError" class="filter-error" role="alert">{{ filterError }}</p><ElButton type="primary" native-type="submit">确定</ElButton></form></section>
@@ -133,6 +141,6 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
       </section>
     </main>
     <ProductDetail v-if="detailId !== null" :id="detailId" :signed-in="signedIn" @close="closeDetail" @sign-in="openDetailSignIn"/>
-    <footer v-if="!diyOpen && !userCenterOpen" class="footer"><div class="page-width footer-inner"><StoreBrand class="footer-brand"/><p>专业 · 可靠 · 用心的电脑硬件商城</p><span class="footer-note">每一件配件，都为你的下一台电脑。</span></div></footer>
+    <footer v-if="!diySection && !userCenterOpen" class="footer"><div class="page-width footer-inner"><StoreBrand class="footer-brand"/><p>专业 · 可靠 · 用心的电脑硬件商城</p><span class="footer-note">每一件配件，都为你的下一台电脑。</span></div></footer>
   </div>
 </template>
