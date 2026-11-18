@@ -114,7 +114,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
       <button v-for="category in categories" :key="category.code" :class="{ active: selectedCategory === category.code }" :aria-pressed="selectedCategory === category.code" @click="selectedCategory = category.code"><HardwareIcon :name="category.icon"/>{{ category.label }}</button>
     </div></nav>
     <DiyWelcome v-if="welcomeOpen && !userCenterOpen" @start-diy="openDiy"/>
-    <DiyWorkspace v-if="diyOpen" v-show="!userCenterOpen"/>
+    <DiyWorkspace v-if="diyOpen" v-show="!userCenterOpen" @session-expired="accountPanel?.profileExpired()"/>
     <UserCenter v-if="userCenterOpen" :section="accountSection">
       <OrderPanel v-if="orderNumber" :number="orderNumber"/>
       <OrderHistory v-else-if="ordersOpen"/>

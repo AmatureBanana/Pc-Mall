@@ -12,7 +12,10 @@ export const hardwareLabels: Record<HardwareCategory, string> = {
   SSD: '硬盘', PSU: '电源', CASE: '机箱', COOLER: 'CPU 散热器',
 }
 export interface Selection { category: HardwareCategory; productId: number; source: 'DIY' | 'RECOMMENDATION' }
-export interface Workspace { version: 1; revision: number; selections: Selection[]; integratedGraphicsCpuId?: number; memoryQuantity?: number; manuallyEdited?: true }
+export interface Workspace {
+  version: 1; revision: number; selections: Selection[]; integratedGraphicsCpuId?: number; memoryQuantity?: number
+  manuallyEdited?: true; origin?: 'RECOMMENDATION'
+}
 export const maxDiyMemoryQuantity = 4
 export interface QuoteItem {
   category: HardwareCategory; productId: number; quantity: number
@@ -55,7 +58,7 @@ export const workspaceKey = 'pc-mall.diy.workspace.v1'
  */
 export const seenKey = 'pc-mall.diy.seen.v1'
 export interface SeenItem {
-  category: HardwareCategory; productId: number; state: QuoteItem['state']; amount: string | null
+  category: HardwareCategory; productId: number; state: QuoteItem['state']; amount: string | null; stock?: number
 }
 export interface SeenSnapshot {
   version: 1; revision: number; ruleVersion: string; catalogVersion: string; items: SeenItem[]
@@ -72,6 +75,7 @@ export function restoreWorkspace(): { workspace: Workspace; warning: string } {
     if (!item || item.version !== 1 || !Number.isSafeInteger(item.revision) || item.revision < 0
       || item.revision >= Number.MAX_SAFE_INTEGER || !Array.isArray(item.selections) || item.selections.length > 8
       || item.manuallyEdited !== undefined && item.manuallyEdited !== true
+      || item.origin !== undefined && item.origin !== 'RECOMMENDATION'
       || !item.selections.every((selection: Selection) => selection && isCategory(selection.category)
         && Number.isSafeInteger(selection.productId) && selection.productId > 0 && ['DIY', 'RECOMMENDATION'].includes(selection.source))
       || item.memoryQuantity !== undefined && (!Number.isInteger(item.memoryQuantity) || item.memoryQuantity < 1
@@ -87,6 +91,8 @@ export function restoreWorkspace(): { workspace: Workspace; warning: string } {
     return { workspace: { version: 1, revision: item.revision, selections: item.selections.map((selection: Selection) =>
       ({ category: selection.category, productId: selection.productId, source: selection.source })),
       ...(item.memoryQuantity > 1 ? { memoryQuantity: item.memoryQuantity } : {}),
+      ...(item.origin === 'RECOMMENDATION' || item.selections.some((selection: Selection) => selection.source === 'RECOMMENDATION')
+        ? { origin: 'RECOMMENDATION' as const } : {}),
       ...(item.manuallyEdited === true ? { manuallyEdited: true as const } : {}),
       ...(item.integratedGraphicsCpuId === undefined ? {} : { integratedGraphicsCpuId: item.integratedGraphicsCpuId }) }, warning: '' }
   } catch {
@@ -100,15 +106,17 @@ export function saveWorkspace(workspace: Workspace): string {
 }
 
 /** Stores the diagnostic snapshot only; a storage failure never blocks editing or restoration. */
+export function seenSnapshot(revision: number, items: QuoteItem[], check: Compatibility): SeenSnapshot {
+  return {
+    version: 1, revision, ruleVersion: check.ruleVersion, catalogVersion: check.catalogVersion,
+    items: items.flatMap(item => item.product ? [{ category: item.category, productId: item.productId,
+      state: item.state, amount: item.amount, stock: item.product.stock }] : []),
+  }
+}
+
 export function rememberSeen(quote: Quote, check: Compatibility): void {
-  try {
-    const seen: SeenSnapshot = {
-      version: 1, revision: quote.revision, ruleVersion: check.ruleVersion, catalogVersion: check.catalogVersion,
-      items: quote.items.filter(item => item.product !== null).map(item => ({ category: item.category,
-        productId: item.productId, state: item.state, amount: item.amount })),
-    }
-    sessionStorage.setItem(seenKey, JSON.stringify(seen))
-  } catch { /* Diagnostics only; the workspace itself already reports its own save state. */ }
+  try { sessionStorage.setItem(seenKey, JSON.stringify(seenSnapshot(quote.revision, quote.items, check))) }
+  catch { /* Diagnostics only; the workspace itself already reports its own save state. */ }
 }
 
 /** Reads the diagnostic snapshot; a damaged or absent snapshot simply yields no comparison. */
@@ -130,13 +138,14 @@ export function parseSeen(raw: string | null): SeenSnapshot | null {
       || !Array.isArray(item.items) || item.items.length > 8
       || !item.items.every((entry: SeenItem) => entry && isCategory(entry.category)
         && Number.isSafeInteger(entry.productId) && entry.productId > 0 && itemStates.includes(entry.state)
+        && (entry.stock === undefined || Number.isSafeInteger(entry.stock) && entry.stock >= 0)
         && (entry.state === 'VALID' ? isMoney(entry.amount) : entry.amount === null))
       || new Set(item.items.map((entry: SeenItem) => entry.category)).size !== item.items.length) return null
     return item as SeenSnapshot
   } catch { return null }
 }
 
-export type ChangeKind = 'PRICE_CHANGED' | 'UNAVAILABLE' | 'AVAILABILITY_CHANGED'
+export type ChangeKind = 'PRICE_CHANGED' | 'STOCK_CHANGED' | 'UNAVAILABLE' | 'AVAILABILITY_CHANGED'
 export interface RestoredChange {
   kind: ChangeKind; category: HardwareCategory; productId: number; message: string
 }
@@ -180,6 +189,10 @@ export function describeRestoration(seen: SeenSnapshot | null, quote: Quote, che
       }
       changes.push({ kind: 'AVAILABILITY_CHANGED', category: item.category, productId: item.productId,
         message: `${label}：商品状态由「${states[before.state]}」变为「${states[item.state]}」，已按当前库存与商品状态重验。` })
+    }
+    if (before?.state === 'VALID' && before.stock !== undefined && item.product && before.stock !== item.product.stock) {
+      changes.push({ kind: 'STOCK_CHANGED', category: item.category, productId: item.productId,
+        message: `${label}可售库存由 ${before.stock} 件变为 ${item.product.stock} 件` })
     }
     if (!before || before.amount === null || item.amount === null || before.amount === item.amount) return
     changes.push({ kind: 'PRICE_CHANGED', category: item.category, productId: item.productId,

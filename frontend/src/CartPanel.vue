@@ -260,7 +260,7 @@ async function removeRows(all: boolean) {
                 :checked="selected.has(groupKey(group.id))" :disabled="bulkRemoving" @change="choose([groupKey(group.id)], $event)"/>
                 <HardwareIcon name="layers"/>配置组：装机方案 {{ index + 1 }} <span>（共 {{ group.items.reduce((sum, item) => sum + item.quantity, 0) }} 件）</span>
               </label>
-              <small class="cart-source">来源：DIY 装机</small>
+              <small class="cart-source">来源：{{ group.origin === 'RECOMMENDATION' ? '智能推荐' : 'DIY 装机' }}</small>
               <span class="cart-group-subtotal">组小计：<b class="cart-price">¥{{ formatPrice(group.amount) }}</b></span>
               <button type="button" class="cart-text-button cart-group-toggle" :aria-expanded="!collapsed.has(group.id)"
                 :aria-label="(collapsed.has(group.id) ? '展开' : '收起') + '装机方案 ' + (index + 1)" @click="toggleGroup(group.id)">

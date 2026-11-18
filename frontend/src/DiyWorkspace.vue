@@ -5,7 +5,8 @@ import HardwareIcon from './HardwareIcon.vue'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
 import ScoreDisplay from './ScoreDisplay.vue'
 import { formatPrice, formatParameter, imageFallback, loadProduct, loadProducts } from './catalog'
-import { hardwareCategories, hardwareDisplayOrder, hardwareLabels, isDiyAssessment, isManualWorkspace, type HardwareCategory } from './diy'
+import { describeRestoration, hardwareCategories, hardwareDisplayOrder, hardwareLabels, isDiyAssessment,
+  isManualWorkspace, seenSnapshot, type HardwareCategory, type SeenSnapshot } from './diy'
 import { useCatalogRequest } from './useCatalogRequest'
 import { useDiyWorkspace } from './useDiyWorkspace'
 import { signedIn } from './auth'
@@ -14,6 +15,7 @@ import { beginWorkspaceSignIn } from './workspaceSession'
 import { takeRecommendation, recommendedWorkspace, recommendationScenarios, scoreComponents, scoreLabels,
   type RecommendationPlan } from './recommendation'
 
+const emit = defineEmits<{ 'session-expired': [] }>()
 const activeCategory = ref<HardwareCategory>('CPU')
 const searchInput = ref('')
 const keyword = ref('')
@@ -36,6 +38,16 @@ watch(editing, (edit, previous) => {
 }, { immediate: true })
 const { data: quote, status: quoteStatus, error: quoteError, refresh: refreshQuote } = quotation
 const { data: check, status: checkStatus, error: checkError, refresh: refreshCheck } = compatibility
+const transferBaseline = ref<SeenSnapshot | null>(null)
+watch([transferOpen, quote, check], ([open, currentQuote, currentCheck]) => {
+  if (!open) transferBaseline.value = null
+  else if (!transferBaseline.value && currentQuote?.revision === workspace.value.revision
+    && currentCheck?.revision === currentQuote.revision) {
+    transferBaseline.value = seenSnapshot(currentQuote.revision, currentQuote.items, currentCheck)
+  }
+})
+const transferChanges = computed(() => transferBaseline.value && quote.value && check.value
+  ? describeRestoration(transferBaseline.value, quote.value, check.value) : null)
 const showPerformance = computed(() => !editing.value && isManualWorkspace(workspace.value))
 const assessment = computed(() => {
   const result = quote.value?.assessment
@@ -74,8 +86,19 @@ watch([quote, check], ([currentQuote, currentCheck]) => {
     && (!currentCheck.corePassed || currentCheck.catalogVersion !== original.compatibility.catalogVersion)) expireRecommendation()
 })
 onMounted(() => {
-  const recommendation = takeRecommendation()
-  if (recommendation) { load(recommendedWorkspace(recommendation)); importedRecommendation.value = recommendation }
+  const handoff = takeRecommendation()
+  if (!handoff) return
+  const { plan, addToCart } = handoff
+  load(recommendedWorkspace(plan))
+  importedRecommendation.value = plan
+  if (!addToCart) return
+  if (signedIn.value) {
+    cartError.value = ''
+    transferOpen.value = true
+  } else {
+    beginWorkspaceSignIn(true, { resumeCart: true, baseline: seenSnapshot(workspace.value.revision, plan.items, plan.compatibility) })
+    window.location.hash = 'login'
+  }
 })
 const { data: products, status, error, refresh } = useCatalogRequest(
   signal => loadProducts(signal, activeCategory.value, keyword.value), '候选商品')
@@ -91,6 +114,8 @@ const candidates = computed(() => {
 })
 const selectedId = (category: HardwareCategory) => workspace.value.selections.find(item => item.category === category)?.productId
 const quoteItem = (category: HardwareCategory) => quote.value?.items.find(item => item.category === category)
+const unitPrices = computed(() => Object.fromEntries(quote.value?.items.flatMap(item =>
+  item.product ? [[item.category, item.product.price] as const] : []) ?? []))
 const memoryLimitsLoading = computed(() => quoteStatus.value === 'loading' || checkStatus.value === 'loading')
 const memoryQuantityTooHigh = computed(() => memoryQuantity.value > memoryLimit.value && !memoryLimitsLoading.value)
 const totalUnits = computed(() => workspace.value.selections.length + memoryQuantity.value - 1)
@@ -110,9 +135,10 @@ const integratedSelected = computed(() => Boolean(workspace.value.integratedGrap
 const slotSelected = (category: HardwareCategory) => Boolean(selectedId(category) || category === 'GPU' && integratedSelected.value)
 const transferCategories = computed(() => displayCategories.filter(({ code }) => slotSelected(code)))
 const canTransfer = computed(() => displayCategories.every(({ code }) => slotSelected(code))
+  && quoteStatus.value === 'ready' && quote.value?.revision === workspace.value.revision && quote.value.total !== null
   && checkStatus.value === 'ready' && check.value?.revision === workspace.value.revision
   && check.value.complete && check.value.corePassed && !memoryQuantityTooHigh.value
-  && restoration.value.phase !== 'running')
+  && !['running', 'error'].includes(restoration.value.phase))
 const integratedParameters = computed(() => integratedGraphics.value?.parameters.filter(item => item.code.startsWith('igpu')) ?? [])
 const integratedModel = computed(() => integratedParameters.value.find(item => item.code === 'igpuModel')?.value ?? 'CPU 内置图形处理器')
 watch(() => [selectedId('CPU'), quoteItem('CPU')?.product?.revision], () => { void cpuDetails.refresh() }, { immediate: true })
@@ -185,21 +211,29 @@ function openTransfer() {
   transferOpen.value = true
 }
 async function confirmTransfer() {
-  if (!canTransfer.value || transferring.value) return
+  const catalogVersion = check.value?.catalogVersion
+  if (!canTransfer.value || transferring.value || !catalogVersion) return
   if (!signedIn.value) {
     transferOpen.value = false
-    beginWorkspaceSignIn(true)
+    beginWorkspaceSignIn(true, { resumeCart: workspace.value.origin === 'RECOMMENDATION' })
     window.location.hash = 'login'
     return
   }
-  if (memoryQuantity.value > memoryLimit.value) return
   transferring.value = true
   try {
     const replacing = Boolean(editing.value)
-    if (await (replacing ? replaceConfiguration(workspace.value) : addConfiguration(workspace.value))) {
+    const result = replacing ? (await replaceConfiguration(workspace.value) ? 'added' : 'failed')
+      : await addConfiguration(workspace.value, { catalogVersion, unitPrices: unitPrices.value })
+    if (result === 'added') {
       transferOpen.value = false
       if (!replacing) clearConfiguration()
       ElMessage.success(replacing ? '装机方案已整组替换' : '装机方案已加入购物车')
+    } else if (result === 'revalidate') {
+      void refreshQuote()
+      void refreshCheck()
+    } else if (result === 'sign-in') {
+      emit('session-expired')
+      cartError.value = '登录已过期，请重新登录后继续操作。'
     }
   } finally { transferring.value = false }
 }
@@ -215,7 +249,14 @@ const restoredSummary = computed(() => {
   }
 })
 // The candidate list is a catalog read like the quote; a restoration must not leave it showing pre-login data.
-watch(() => restoration.value.phase, phase => { if (phase === 'ready') void refresh() })
+watch(restoration, state => {
+  if (state.phase !== 'ready') return
+  void refresh()
+  if (state.resumeCart && signedIn.value && canTransfer.value) {
+    cartError.value = ''
+    transferOpen.value = true
+  }
+})
 watch(activeCategory, () => { searchInput.value = keyword.value = brand.value = ''; sort.value = 'default'; void refresh() })
 watch(keyword, () => { brand.value = ''; void refresh() })
 onMounted(() => { void refresh() })
@@ -253,7 +294,7 @@ onMounted(() => { void refresh() })
         <p class="restoration-note">恢复期间配置已变更，旧的恢复结果不再使用；当前选择与检测结果对应修订 {{ workspace.revision }}。</p>
       </template>
       <p v-else-if="restoration.phase === 'error'" class="diy-warning" role="alert">{{ restoration.error }}
-        <button @click="restore">重试登录后重验</button></p>
+        <button @click="restore()">重试登录后重验</button></p>
     </section>
     <div class="diy-columns">
       <section class="diy-configuration-region" aria-label="当前配置">
@@ -303,7 +344,8 @@ onMounted(() => { void refresh() })
             <p v-if="quoteStatus === 'error'" class="diy-warning" role="alert">{{ quoteError }}</p>
             <div class="diy-quote-meta"><span>已选择 {{ count }} / 8 项 · 修订 {{ workspace.revision }}</span><button :disabled="quoteStatus === 'loading' || restoration.phase === 'running'" @click="refreshQuote(); refreshCheck()">{{ quoteStatus === 'error' ? '重试参考报价' : '刷新价格与库存' }}</button></div>
 
-            <section v-if="importedRecommendation && importedPolicy" class="diy-performance" :aria-label="`${importedPolicy.label}推荐说明`">
+            <section v-if="importedRecommendation && importedPolicy && quoteStatus === 'ready' && checkStatus === 'ready'"
+              class="diy-performance" :aria-label="`${importedPolicy.label}推荐说明`">
               <ScoreDisplay :label="`${importedPolicy.label}评分`" :score="Number(importedRecommendation.score).toFixed(2)"/>
               <p>推荐时总价 ¥{{ formatPrice(importedRecommendation.total) }}，预算 ¥{{ formatPrice(importedRecommendation.budget) }}。当前价格、库存与兼容性以工作区重新检测为准。</p>
               <p>{{ importedWeights }}。调整配置后会重新评估整机性能。</p>
@@ -413,12 +455,26 @@ onMounted(() => { void refresh() })
         <ul><li v-for="category in transferCategories" :key="category.code">
           {{ labels[category.code] }} · {{ selectionName(category.code) }}
           <span v-if="category.code === 'MEMORY'"> ×{{ memoryQuantity }} 根</span>
+          <span v-if="unitPrices[category.code]"> · 单价 ¥{{ formatPrice(unitPrices[category.code]!) }}</span>
         </li></ul>
       </section>
       <dl class="transfer-total"><div><dt>参考总价</dt><dd>{{ quote?.total != null && quote.revision === workspace.revision && quoteStatus === 'ready' ? '¥' + formatPrice(quote.total) : '待核价' }}</dd></div></dl>
       <p class="transfer-intro">加入时会重新核验价格、库存和兼容性，参考价不锁定。</p>
-      <p v-if="memoryQuantityTooHigh" class="auth-error" role="alert">请调低内存数量或更换主板后再转入购物车。</p>
+      <p v-if="workspace.origin && (recommendationExpired || restoredSummary?.changes.length || restoredSummary?.catalogChanged)"
+        class="diy-warning" role="status">推荐后商品数据或配置已变化，请核对当前报价和兼容检测。</p>
+      <ul v-if="workspace.origin && restoredSummary?.changes.length" class="restoration-changes" aria-label="登录后发现的商品变化">
+        <li v-for="change in restoredSummary.changes" :key="change.category + change.kind">{{ change.message }}</li>
+      </ul>
+      <ul v-if="transferChanges?.changes.length" class="restoration-changes" aria-label="核对期间的商品变化">
+        <li v-for="change in transferChanges.changes" :key="change.category + change.kind">{{ change.message }}</li>
+      </ul>
+      <p v-if="transferChanges?.catalogChanged" class="diy-warning" role="status">核对期间商品参数或上架状态已变化，已重新执行兼容检测。</p>
       <p v-if="cartError" class="auth-error" role="alert">{{ cartError }}</p>
+      <p v-else-if="quoteStatus === 'loading' || checkStatus === 'loading'" class="transfer-intro" role="status">正在重验当前方案…</p>
+      <p v-else-if="quoteStatus === 'error' || checkStatus === 'error'" class="auth-error" role="alert">{{ quoteError || checkError }}</p>
+      <p v-else-if="quote?.total === null" class="auth-error" role="alert">{{ quote.items.find(item => item.state !== 'VALID')?.message }}</p>
+      <p v-else-if="!check?.corePassed" class="auth-error" role="alert">{{ storyState }}，请返回 DIY 查看兼容分项诊断。</p>
+      <p v-else-if="memoryQuantityTooHigh" class="auth-error" role="alert">请调低内存数量或更换主板后再转入购物车。</p>
       <template #footer><ElButton :disabled="transferring" @click="transferOpen = false">取消</ElButton><ElButton type="primary" :loading="transferring" :disabled="!canTransfer" @click="confirmTransfer">{{ signedIn ? '确定' : '前往登录' }}</ElButton></template>
     </ElDialog>
   </main>

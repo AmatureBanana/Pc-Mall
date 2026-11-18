@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.util.EnumMap;
 import java.util.Set;
 
@@ -64,9 +65,33 @@ class CartController {
     @PostMapping("/configurations")
     ResponseEntity<CartResponse> addConfiguration(@AuthenticationPrincipal AccountPrincipal principal, @RequestBody String body) {
         JsonNode input = configurationInput(body);
-        requireFields(input, Set.of("selections", "integratedGraphicsCpuId", "memoryQuantity"));
+        requireFields(input, Set.of("selections", "integratedGraphicsCpuId", "memoryQuantity", "origin", "confirmation"));
         var configuration = selections(input);
-        return answer(carts.addConfiguration(principal.ownerId(), configuration.parts(), configuration.graphics(), configuration.memoryQuantity()));
+        var origin = ShoppingCart.ConfigurationOrigin.DIY;
+        if (input.has("origin")) {
+            try { origin = ShoppingCart.ConfigurationOrigin.valueOf(text(input, "origin")); }
+            catch (IllegalArgumentException error) { invalid("配置来源无效。"); }
+        }
+        var confirmation = input.has("confirmation")
+                ? confirmation(input.get("confirmation"), configuration.parts().keySet()) : null;
+        return answer(carts.addConfiguration(principal.ownerId(), configuration.parts(), configuration.graphics(),
+                configuration.memoryQuantity(), origin, confirmation));
+    }
+
+    private static ShoppingCart.ConfigurationConfirmation confirmation(JsonNode input, Set<HardwareCategory> categories) {
+        requireFields(input, Set.of("unitPrices", "catalogVersion"));
+        var prices = input.get("unitPrices");
+        String catalogVersion = text(input, "catalogVersion");
+        if (!catalogVersion.matches("[a-f0-9]{64}") || prices == null || !prices.isObject() || prices.size() != categories.size()) {
+            invalid("确认的报价或兼容性版本无效。");
+        }
+        var unitPrices = new EnumMap<HardwareCategory, BigDecimal>(HardwareCategory.class);
+        for (var category : categories) {
+            String price = text(prices, category.name());
+            if (!price.matches("[0-9]{1,10}\\.[0-9]{2}")) invalid("确认的商品单价无效。");
+            unitPrices.put(category, new BigDecimal(price));
+        }
+        return new ShoppingCart.ConfigurationConfirmation(unitPrices, catalogVersion);
     }
 
     @PostMapping("/configurations/{id}")

@@ -11,7 +11,8 @@ export interface CartItem {
 export interface Cart {
   revision: number; items: CartItem[]; total: string; validTotal: string
   validCount: number; lineCount: number
-  configurations: { id: number; items: CartItem[]; amount: string; valid: boolean; editToken: string; state: string; reasons: string[] }[]
+  configurations: { id: number; items: CartItem[]; amount: string; valid: boolean; editToken: string
+    state: string; reasons: string[]; origin: 'DIY' | 'RECOMMENDATION' }[]
 }
 export const cartStates: CartState[] = ['VALID', 'OFF_SALE', 'OUT_OF_STOCK', 'INSUFFICIENT_STOCK']
 export interface CheckoutPreview {
@@ -67,6 +68,7 @@ function isConfiguration(value: unknown): value is Cart['configurations'][number
   const group = value as Record<string, unknown>
   if (!Number.isSafeInteger(group.id) || Number(group.id) <= 0 || !Array.isArray(group.items)
       || !group.items.every(isItem)
+      || (group.origin !== 'DIY' && group.origin !== 'RECOMMENDATION')
       || !isMoney(group.amount) || typeof group.valid !== 'boolean'
       || typeof group.editToken !== 'string' || !/^[a-f0-9]{64}$/.test(group.editToken)
       || ![...cartStates, 'INCOMPATIBLE', 'UNVERIFIED'].includes(group.state as CartState)
@@ -277,22 +279,26 @@ async function remove(itemId: number): Promise<boolean> {
   } catch (cause) { failure(request, cause, '移除失败，请重试。'); return false }
 }
 
-async function addConfiguration(workspace: Workspace): Promise<boolean> {
+async function addConfiguration(workspace: Workspace, confirmation: { unitPrices: Record<string, string>; catalogVersion: string }) {
   const request = beginAction()
   try {
     const value = parse(await write('/api/cart/configurations', {
       selections: workspace.selections.map(({ category, productId }) => ({ category, productId })),
       integratedGraphicsCpuId: workspace.integratedGraphicsCpuId,
       memoryQuantity: workspace.memoryQuantity,
+      origin: workspace.origin,
+      confirmation,
     }, 'POST', request.signal))
-    if (!current(request)) return false
+    if (!current(request)) return 'failed'
     success(request, value, '装机方案已加入购物车。')
-    return true
+    return 'added'
   } catch (cause) {
+    if (!current(request) || request.order !== latestAction) return 'failed'
+    if (cause instanceof AuthError && cause.status === 401) return 'sign-in'
     const feedback = cause instanceof AuthError ? cause
       : new Error('方案入车结果暂未确认，请重试或打开购物车核对。')
     failure(request, feedback, '方案未能加入购物车，请重试。')
-    return false
+    return cause instanceof AuthError && cause.status === 409 ? 'revalidate' : 'failed'
   }
 }
 
@@ -313,6 +319,7 @@ function startEdit(group: Cart['configurations'][number]) {
     previousWorkspace: editing.value?.previousWorkspace,
     workspace: { version: 1, revision: 0, selections: group.items.map(item =>
       ({ category: item.category as HardwareCategory, productId: item.productId, source: 'DIY' })),
+    ...(group.origin === 'RECOMMENDATION' ? { origin: group.origin } : {}),
     memoryQuantity: group.items.find(item => item.category === 'MEMORY')!.quantity,
     ...(!group.items.some(item => item.category === 'GPU') ? { integratedGraphicsCpuId: cpu.productId } : {}) } }
   window.location.hash = 'diy'

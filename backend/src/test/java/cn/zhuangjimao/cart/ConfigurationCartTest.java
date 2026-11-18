@@ -81,6 +81,97 @@ class ConfigurationCartTest {
         assertThat(retained.path("configurations").get(0).path("id")).isEqualTo(original.path("configurations").get(0).path("id"));
     }
 
+    @Test void recommendationRequiresTheCurrentQuoteAndKeepsItsOriginWithoutReservingStock() throws Exception {
+        var owner = shopper("recommend");
+        var selections = configuration("recommend");
+        var input = Map.of("selections", selections);
+        var parts = new LinkedHashMap<String, Object>();
+        parts.put("revision", 0);
+        selections.forEach(part -> parts.put((String) part.get("category"), part.get("productId")));
+        var check = data(post(owner, "/api/compatibility/check", parts));
+        assertThat(check.path("checks")).hasSize(9);
+        String quoteUrl = "/api/diy/quote?" + String.join("&", parts.entrySet().stream()
+                .map(part -> part.getKey() + "=" + part.getValue()).toList());
+        var quote = data(get(owner, quoteUrl));
+        assertThat(check.path("corePassed").asBoolean()).isTrue();
+        assertThat(quote.path("total").isTextual()).isTrue();
+        long cpu = (long) selections.getFirst().get("productId");
+        long motherboard = (long) selections.get(1).get("productId");
+        db.update("UPDATE products SET price=price+1,revision=revision+1 WHERE id=?", cpu);
+        db.update("UPDATE products SET price=price-1,revision=revision+1 WHERE id=?", motherboard);
+        var currentQuote = data(get(owner, quoteUrl));
+        assertThat(currentQuote.path("total")).isEqualTo(quote.path("total"));
+        var stale = Map.of("selections", selections, "origin", "RECOMMENDATION", "confirmation",
+                confirmation(quote, check));
+        var rejected = post(owner, PATH, stale);
+        assertThat(rejected.statusCode()).as(rejected.body()).isEqualTo(409);
+        assertThat(code(rejected)).isEqualTo("CONFIGURATION_RECONFIRMATION_REQUIRED");
+        assertThat(data(get(owner, "/api/cart")).path("configurations")).isEmpty();
+
+        db.update("""
+                UPDATE product_specifications
+                SET parameters=JSON_SET(parameters,'$[0].sourceUrl','https://example.com/updated-reference')
+                WHERE product_id=?
+                """, cpu);
+        var changedCheck = data(post(owner, "/api/compatibility/check", parts));
+        assertThat(changedCheck.path("corePassed").asBoolean()).isTrue();
+        assertThat(changedCheck.path("catalogVersion")).isNotEqualTo(check.path("catalogVersion"));
+        var staleParameters = Map.of("selections", selections, "origin", "RECOMMENDATION", "confirmation",
+                confirmation(currentQuote, check));
+        assertThat(code(post(owner, PATH, staleParameters))).isEqualTo("CONFIGURATION_RECONFIRMATION_REQUIRED");
+        assertThat(code(post(owner, PATH, Map.of("selections", selections, "confirmation", confirmation(currentQuote, check)))))
+                .isEqualTo("CONFIGURATION_RECONFIRMATION_REQUIRED");
+
+        var confirmed = Map.of("selections", selections, "origin", "RECOMMENDATION", "confirmation",
+                confirmation(currentQuote, changedCheck));
+        db.update("UPDATE products SET stock=0 WHERE id=?", cpu);
+        assertThat(code(post(owner, PATH, confirmed))).isEqualTo("CART_STOCK_LIMIT");
+        db.update("UPDATE products SET stock=200,status='OFF_SALE' WHERE id=?", cpu);
+        assertThat(code(post(owner, PATH, confirmed))).isEqualTo("CART_STOCK_LIMIT");
+        db.update("UPDATE products SET status='ON_SALE' WHERE id=?", cpu);
+        assertThat(data(get(owner, "/api/cart")).path("configurations")).isEmpty();
+
+        var before = inventory("recommend");
+        var added = post(owner, PATH, confirmed);
+        assertThat(added.statusCode()).as(added.body()).isEqualTo(200);
+        var cart = data(added);
+        assertThat(cart.path("configurations")).hasSize(1);
+        assertThat(cart.path("configurations").get(0).path("origin").asText()).isEqualTo("RECOMMENDATION");
+        assertThat(cart.path("configurations").get(0).path("amount")).isEqualTo(currentQuote.path("total"));
+        assertThat(data(post(owner, PATH, input))).isEqualTo(cart);
+        assertThat(data(post(owner, PATH, confirmed))).isEqualTo(cart);
+        var group = cart.path("configurations").get(0);
+        var replaced = post(owner, PATH + "/" + group.path("id").asLong(), Map.of(
+                "selections", selections, "revision", cart.path("revision").asLong(), "editToken", group.path("editToken").asText()));
+        assertThat(replaced.statusCode()).as(replaced.body()).isEqualTo(200);
+        assertThat(data(replaced).path("configurations").get(0).path("origin").asText()).isEqualTo("RECOMMENDATION");
+        assertThat(inventory("recommend")).isEqualTo(before);
+        assertThat(db.queryForObject("SELECT COUNT(*) FROM stock_reservation_items i JOIN products p ON p.id=i.product_id WHERE p.sku LIKE ?",
+                Integer.class, prefix + "recommend%")).isZero();
+    }
+
+    @Test void aStoredSingleItemRetryWithoutConfigurationOriginStillReturnsTheWholeCart() throws Exception {
+        var owner = shopper("legacy");
+        var selections = configuration("legacy");
+        var group = post(owner, PATH, Map.of("selections", selections));
+        assertThat(group.statusCode()).isEqualTo(200);
+        var input = Map.of("productId", selections.getFirst().get("productId"), "quantity", 1, "requestKey", "legacy-result");
+        var added = post(owner, "/api/cart/items", input);
+        assertThat(added.statusCode()).isEqualTo(200);
+        assertThat(db.update("""
+                UPDATE cart_request SET result=JSON_REMOVE(result,'$.configurations[0].origin')
+                WHERE account_id=(SELECT id FROM account WHERE username=?) AND request_key='legacy-result'
+                """, prefix + "legacy")).isEqualTo(1);
+        assertThat(data(post(owner, "/api/cart/items", input))).isEqualTo(data(added));
+        assertThat(data(get(owner, "/api/cart")).path("items").get(0).path("quantity").asInt()).isEqualTo(1);
+    }
+
+    private static Map<String, Object> confirmation(JsonNode quote, JsonNode check) {
+        var prices = new LinkedHashMap<String, String>();
+        quote.path("items").forEach(item -> prices.put(item.path("category").asText(), item.path("product").path("price").asText()));
+        return Map.of("unitPrices", prices, "catalogVersion", check.path("catalogVersion").asText());
+    }
+
     @Test void configurationWaitsForCatalogWriteAndValidatesItsCommittedStock() throws Exception {
         var owner = shopper("catalog");
         var selections = configuration("catalog");

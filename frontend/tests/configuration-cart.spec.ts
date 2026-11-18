@@ -103,6 +103,11 @@ test('guest signs in and explicitly confirms a seven-part build whose SKU and cu
   expect(submissions[0]).toEqual({
     selections: original.selections.map(({ category, productId }) => ({ category, productId })),
     integratedGraphicsCpuId: original.integratedGraphicsCpuId,
+    confirmation: {
+      catalogVersion: expect.stringMatching(/^[a-f0-9]{64}$/),
+      unitPrices: Object.fromEntries(original.selections.map(({ category }) =>
+        [category, category === 'CPU' ? '1599.00' : expect.stringMatching(/^\d+\.\d{2}$/)])),
+    },
   })
   await page.getByRole('button', { name: /^购物车/ }).click()
   const group = cartPage(page).getByRole('region', { name: '装机方案 1' })

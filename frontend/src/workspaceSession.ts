@@ -11,7 +11,8 @@ export const workspaceActive = ref(false)
  * Where the unified sign-in was opened from. Opening it from the workspace must return there on
  * success or cancel instead of dropping the user on the storefront.
  */
-export const signInOrigin = ref<'diy' | null>(null)
+type SignInOrigin = 'diy' | 'diy-cart'
+export const signInOrigin = ref<SignInOrigin | null>(null)
 
 /**
  * What the user saw when they left the workspace to sign in. The workspace stays mounted behind the
@@ -24,13 +25,13 @@ export const seenBaseline = ref<SeenSnapshot | null | undefined>(undefined)
 const signInKey = 'pc-mall.diy.sign-in.v1'
 
 /** Only navigation and diagnostic data; storage failure leaves the in-memory flow usable. */
-export function beginWorkspaceSignIn(fromWorkspace: boolean) {
+export function beginWorkspaceSignIn(fromWorkspace: boolean, options?: { resumeCart: boolean; baseline?: SeenSnapshot }) {
   endWorkspaceSignIn()
   if (!fromWorkspace) return
-  signInOrigin.value = 'diy'
-  seenBaseline.value = readSeen()
+  signInOrigin.value = options?.resumeCart ? 'diy-cart' : 'diy'
+  seenBaseline.value = options?.baseline ?? readSeen()
   try {
-    sessionStorage.setItem(signInKey, JSON.stringify({ version: 1, origin: 'diy', baseline: seenBaseline.value }))
+    sessionStorage.setItem(signInKey, JSON.stringify({ version: 1, origin: signInOrigin.value, baseline: seenBaseline.value }))
   } catch { /* The active page can still complete the flow. */ }
 }
 
@@ -45,12 +46,12 @@ try {
   const raw = sessionStorage.getItem(signInKey)
   if (window.location.hash === '#login' || window.location.hash === '#register') {
     const stored = raw === null ? null : JSON.parse(raw)
-    if (stored?.version === 1 && stored.origin === 'diy' && Object.hasOwn(stored, 'baseline')) {
-      signInOrigin.value = 'diy'
+    if (stored?.version === 1 && ['diy', 'diy-cart'].includes(stored.origin) && Object.hasOwn(stored, 'baseline')) {
+      signInOrigin.value = stored.origin
       seenBaseline.value = parseSeen(JSON.stringify(stored.baseline))
     } else endWorkspaceSignIn()
   } else endWorkspaceSignIn()
 } catch { endWorkspaceSignIn() }
 
 /** Set when a sign-in that started from the workspace succeeded; the workspace consumes it. */
-export const restorationPending = ref(false)
+export const restorationPending = ref<SignInOrigin | null>(null)

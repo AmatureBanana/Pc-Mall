@@ -10,8 +10,8 @@ import { workspaceActive, restorationPending, seenBaseline } from './workspaceSe
 export type RestorationState =
   | { phase: 'idle' }
   | { phase: 'running'; revision: number }
-  | { phase: 'ready'; revision: number; restoration: Restoration; restored: number }
-  | { phase: 'error'; revision: number; error: string }
+  | { phase: 'ready'; revision: number; restoration: Restoration; restored: number; resumeCart: boolean }
+  | { phase: 'error'; revision: number; error: string; resumeCart: boolean }
   | { phase: 'superseded'; revision: number }
 
 export function useDiyWorkspace(isEditing: () => boolean) {
@@ -25,9 +25,11 @@ export function useDiyWorkspace(isEditing: () => boolean) {
   const count = computed(() => workspace.value.selections.length + (workspace.value.integratedGraphicsCpuId ? 1 : 0))
 
   function change(selections: Selection[], integratedGraphicsCpuId = workspace.value.integratedGraphicsCpuId,
-    memoryQuantity = workspace.value.memoryQuantity ?? 1, manuallyEdited = selections.some(item => item.source === 'RECOMMENDATION')) {
+    memoryQuantity = workspace.value.memoryQuantity ?? 1, manuallyEdited = selections.some(item => item.source === 'RECOMMENDATION'),
+    origin: Workspace['origin'] | null = workspace.value.origin ?? null) {
     const cpu = selections.find(item => item.category === 'CPU')
     workspace.value = { version: 1, revision: workspace.value.revision + 1, selections,
+      ...(origin && selections.length ? { origin } : {}),
       ...(manuallyEdited ? { manuallyEdited: true } : {}),
       ...(memoryQuantity > 1 && selections.some(item => item.category === 'MEMORY') ? { memoryQuantity } : {}),
       ...(integratedGraphicsCpuId && cpu?.productId === integratedGraphicsCpuId && !selections.some(item => item.category === 'GPU')
@@ -67,7 +69,7 @@ export function useDiyWorkspace(isEditing: () => boolean) {
   function clear() { if (count.value) change([]) }
   function load(workspace: Workspace) {
     change(workspace.selections.map(item => ({ ...item })), workspace.integratedGraphicsCpuId ?? 0,
-      workspace.memoryQuantity ?? 1, workspace.manuallyEdited === true)
+      workspace.memoryQuantity ?? 1, workspace.manuallyEdited === true, workspace.origin ?? null)
   }
   // The active restoration already performs both authoritative reads. Background events must not
   // abort its requests; edits still refresh immediately and supersede the old restoration.
@@ -82,7 +84,7 @@ export function useDiyWorkspace(isEditing: () => boolean) {
    * A frozen baseline taken when the user left for sign-in is used when available, because the
    * workspace keeps revalidating behind the login dialog and would otherwise overwrite it.
    */
-  async function restore() {
+  async function restore(resumeCart = restoration.value.phase === 'error' && restoration.value.resumeCart) {
     const revision = workspace.value.revision
     if (seenBaseline.value === undefined) seenBaseline.value = readSeen()
     const seen = seenBaseline.value
@@ -96,11 +98,11 @@ export function useDiyWorkspace(isEditing: () => boolean) {
     const failed = quotation.status.value !== 'ready' || compatibility.status.value !== 'ready'
     if (failed || !quotation.data.value || !compatibility.data.value
       || quotation.data.value.revision !== revision || compatibility.data.value.revision !== revision) {
-      restoration.value = { phase: 'error', revision,
+      restoration.value = { phase: 'error', revision, resumeCart,
         error: '登录后重验暂不可用，配置引用仍保留；请重试刷新价格与兼容检测。' }
       return
     }
-    restoration.value = { phase: 'ready', revision,
+    restoration.value = { phase: 'ready', revision, resumeCart,
       restoration: describeRestoration(seen, quotation.data.value, compatibility.data.value),
       restored: quotation.data.value.items.length }
     seenBaseline.value = undefined
@@ -118,19 +120,21 @@ export function useDiyWorkspace(isEditing: () => boolean) {
     seenBaseline.value = undefined
     if (restoration.value.phase === 'running') restoration.value = { phase: 'superseded', revision: restoration.value.revision }
     else if (restoration.value.phase === 'ready' || restoration.value.phase === 'error') restoration.value = { phase: 'idle' }
-  })
+  }, { flush: 'sync' })
 
   let refreshTimer: number | undefined
   const onVisible = () => { if (document.visibilityState === 'visible') revalidate() }
-  watch(restorationPending, pending => {
-    if (!pending) return
-    restorationPending.value = false
-    void restore()
-  })
+  function resumeRestoration() {
+    const pending = restorationPending.value
+    if (!pending) return false
+    restorationPending.value = null
+    void restore(pending === 'diy-cart')
+    return true
+  }
+  watch(restorationPending, resumeRestoration)
   onMounted(() => {
     workspaceActive.value = true
-    revalidate()
-    if (restorationPending.value) { restorationPending.value = false; void restore() }
+    if (!resumeRestoration()) revalidate()
     window.addEventListener('focus', revalidate)
     document.addEventListener('visibilitychange', onVisible)
     refreshTimer = window.setInterval(onVisible, 30_000)

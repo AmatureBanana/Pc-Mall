@@ -50,7 +50,7 @@ function openAuth(target: 'login' | 'register') {
 }
 /** Cancelling or failing sends the user back to where they opened the unified login. */
 function closeAuth() {
-  const returnTo = signInOrigin.value === 'diy' ? 'diy' : ''
+  const returnTo = signInOrigin.value ? 'diy' : ''
   authFlowRevision++
   endWorkspaceSignIn()
   navigate(returnTo)
@@ -131,17 +131,17 @@ async function submit() {
       // Closing or navigating away cannot cancel a session already created by the server. Accept
       // that identity, but a stale response must not navigate over the user's current destination.
       if (flow !== authFlowRevision || !authOpen.value) {
-        if (origin === 'diy' && user.value.role === 'USER' && workspaceActive.value) {
+        if (origin && user.value.role === 'USER' && workspaceActive.value) {
           seenBaseline.value = baseline
-          restorationPending.value = true
+          restorationPending.value = 'diy'
         }
         return
       }
       // A sign-in that started in the workspace returns there and revalidates the same references.
       // An administrator is still sent to the administration surface, matching the existing contract.
-      if (origin === 'diy' && user.value.role === 'USER') {
+      if (origin && user.value.role === 'USER') {
         endWorkspaceSignIn(true)
-        restorationPending.value = true
+        restorationPending.value = origin
         navigate('diy')
       } else if (user.value.role === 'ADMIN') {
         endWorkspaceSignIn()

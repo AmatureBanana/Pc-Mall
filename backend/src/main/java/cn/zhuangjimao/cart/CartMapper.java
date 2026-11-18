@@ -32,7 +32,7 @@ interface CartMapper {
     @Select("""
         SELECT i.id,i.product_id,i.quantity,
                p.sku,p.name,p.category,c.label AS category_label,p.brand,p.model,p.image_url,
-               p.price,p.stock,p.status,p.revision
+               p.price,p.stock,p.status,p.revision,NULL AS origin
         FROM shopping_cart_item i
         JOIN products p ON p.id=i.product_id
         JOIN product_categories c ON c.code=p.category
@@ -63,8 +63,8 @@ interface CartMapper {
     @Select("SELECT id FROM cart_configuration WHERE cart_id=#{cartId} AND signature=#{signature}")
     Long configurationId(long cartId, String signature);
 
-    @Insert("INSERT INTO cart_configuration(cart_id,signature) VALUES(#{cartId},#{signature})")
-    void insertConfiguration(long cartId, String signature);
+    @Insert("INSERT INTO cart_configuration(cart_id,signature,origin) VALUES(#{cartId},#{signature},#{origin})")
+    void insertConfiguration(long cartId, String signature, ShoppingCart.ConfigurationOrigin origin);
 
     @Insert("INSERT INTO cart_configuration_item(configuration_id,product_id,quantity) VALUES(#{configurationId},#{productId},#{quantity})")
     void insertConfigurationItem(long configurationId, long productId, int quantity);
@@ -93,7 +93,7 @@ interface CartMapper {
     @Select("""
         SELECT g.id,p.id AS product_id,i.quantity,
                p.sku,p.name,p.category,c.label AS category_label,p.brand,p.model,p.image_url,
-               p.price,p.stock,p.status,p.revision
+               p.price,p.stock,p.status,p.revision,g.origin
         FROM cart_configuration g
         JOIN cart_configuration_item i ON i.configuration_id=g.id
         JOIN products p ON p.id=i.product_id
@@ -133,5 +133,5 @@ interface CartMapper {
     record RequestRow(String fingerprint, String creationToken, String result) {}
     record LineView(long id, long productId, int quantity, String sku, String name, String category,
                     String categoryLabel, String brand, String model, String imageUrl,
-                    BigDecimal price, int stock, String status, long revision) {}
+                    BigDecimal price, int stock, String status, long revision, ShoppingCart.ConfigurationOrigin origin) {}
 }
