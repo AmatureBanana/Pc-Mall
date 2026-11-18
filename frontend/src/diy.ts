@@ -12,7 +12,7 @@ export const hardwareLabels: Record<HardwareCategory, string> = {
   SSD: '硬盘', PSU: '电源', CASE: '机箱', COOLER: 'CPU 散热器',
 }
 export interface Selection { category: HardwareCategory; productId: number; source: 'DIY' | 'RECOMMENDATION' }
-export interface Workspace { version: 1; revision: number; selections: Selection[]; integratedGraphicsCpuId?: number; memoryQuantity?: number }
+export interface Workspace { version: 1; revision: number; selections: Selection[]; integratedGraphicsCpuId?: number; memoryQuantity?: number; manuallyEdited?: true }
 export const maxDiyMemoryQuantity = 4
 export interface QuoteItem {
   category: HardwareCategory; productId: number; quantity: number
@@ -21,7 +21,15 @@ export interface QuoteItem {
 }
 export interface Quote {
   revision: number; items: QuoteItem[]; total: string | null; validSubtotal: string; compatibility: 'NOT_CHECKED'
+  assessment?: DiyAssessment
 }
+const diyScenarios = ['BELOW_OFFICE', 'OFFICE', 'GAMING', 'CREATION'] as const
+export interface DiyAssessment {
+  score: string | null; weightedScore: string | null; scenario: typeof diyScenarios[number] | null
+  bottlenecks: string[]; missing: string[]
+}
+export const isManualWorkspace = (workspace: Workspace) => workspace.manuallyEdited === true
+  || workspace.selections.some(item => item.source === 'DIY')
 export type RuleState = 'PASS' | 'FAIL' | 'UNKNOWN' | 'PENDING' | 'NOT_APPLICABLE'
 export interface RuleDetail { category: HardwareCategory; parameter: string; value: string | null }
 export interface RuleCheck {
@@ -63,6 +71,7 @@ export function restoreWorkspace(): { workspace: Workspace; warning: string } {
     const item = JSON.parse(raw)
     if (!item || item.version !== 1 || !Number.isSafeInteger(item.revision) || item.revision < 0
       || item.revision >= Number.MAX_SAFE_INTEGER || !Array.isArray(item.selections) || item.selections.length > 8
+      || item.manuallyEdited !== undefined && item.manuallyEdited !== true
       || !item.selections.every((selection: Selection) => selection && isCategory(selection.category)
         && Number.isSafeInteger(selection.productId) && selection.productId > 0 && ['DIY', 'RECOMMENDATION'].includes(selection.source))
       || item.memoryQuantity !== undefined && (!Number.isInteger(item.memoryQuantity) || item.memoryQuantity < 1
@@ -78,6 +87,7 @@ export function restoreWorkspace(): { workspace: Workspace; warning: string } {
     return { workspace: { version: 1, revision: item.revision, selections: item.selections.map((selection: Selection) =>
       ({ category: selection.category, productId: selection.productId, source: selection.source })),
       ...(item.memoryQuantity > 1 ? { memoryQuantity: item.memoryQuantity } : {}),
+      ...(item.manuallyEdited === true ? { manuallyEdited: true as const } : {}),
       ...(item.integratedGraphicsCpuId === undefined ? {} : { integratedGraphicsCpuId: item.integratedGraphicsCpuId }) }, warning: '' }
   } catch {
     return { workspace: emptyWorkspace(), warning: '本标签页的临时配置无法恢复，原存储未删除；重新选择后将保存新的配置。' }
@@ -182,10 +192,14 @@ export function describeRestoration(seen: SeenSnapshot | null, quote: Quote, che
   return { changes, catalogChanged, comparable }
 }
 
-export async function loadQuote(workspace: Workspace, signal: AbortSignal): Promise<Quote> {
+export async function loadQuote(workspace: Workspace, signal: AbortSignal, assessPerformance = false): Promise<Quote> {
   const query = new URLSearchParams({ revision: String(workspace.revision) })
   if (workspace.memoryQuantity !== undefined) query.set('memoryQuantity', String(workspace.memoryQuantity))
   workspace.selections.forEach(selection => query.set(selection.category, String(selection.productId)))
+  if (assessPerformance && workspace.selections.length + Number(Boolean(workspace.integratedGraphicsCpuId)) === 8) {
+    query.set('assessPerformance', '1')
+    if (workspace.integratedGraphicsCpuId) query.set('integratedGraphicsCpuId', String(workspace.integratedGraphicsCpuId))
+  }
   const response = await fetch(`/api/diy/quote?${query}`, { signal, cache: 'no-store', headers: { Accept: 'application/json' } })
   if (!response.ok) throw new Error('参考报价暂时不可用，已保留当前选择，请重试。')
   const body = await response.json()
@@ -205,6 +219,15 @@ export async function loadQuote(workspace: Workspace, signal: AbortSignal): Prom
     throw new Error('参考报价数据异常，已保留当前选择，请重试。')
   }
   return quote as Quote
+}
+
+export function isDiyAssessment(assessment: DiyAssessment | undefined): assessment is DiyAssessment {
+  const isScore = (value: unknown): value is string => typeof value === 'string' && /^\d+(\.\d+)?$/.test(value) && Number(value) <= 100
+  return !!assessment && Array.isArray(assessment.bottlenecks) && assessment.bottlenecks.every(item => typeof item === 'string')
+    && Array.isArray(assessment.missing) && assessment.missing.every(item => typeof item === 'string')
+    && (assessment.weightedScore === null || isScore(assessment.weightedScore))
+    && (assessment.score === null ? assessment.scenario === null && assessment.missing.length > 0
+      : isScore(assessment.score) && assessment.scenario !== null && diyScenarios.includes(assessment.scenario))
 }
 
 /**
@@ -227,7 +250,14 @@ export async function loadCompatibility(workspace: Workspace, signal: AbortSigna
     body: JSON.stringify(body) })
   if (!response.ok) throw new Error('兼容检测暂时不可用，已保留当前选择，请重试。')
   const check = (await response.json())?.data
-  if (!check || check.revision !== workspace.revision || typeof check.corePassed !== 'boolean'
+  if (!isCompatibility(check, workspace)) throw new Error('兼容检测数据异常，已保留当前选择，请重试。')
+  return check
+}
+
+export function isCompatibility(value: unknown, workspace: Workspace): value is Compatibility {
+  const check = value as Compatibility | null
+  const hasGpu = workspace.selections.some(item => item.category === 'GPU')
+  return !(!check || check.revision !== workspace.revision || typeof check.corePassed !== 'boolean'
       || !(check.memorySlots === null || Number.isSafeInteger(check.memorySlots) && check.memorySlots > 0)
       || check.ruleVersion !== 'f03-core-graphics-choice-v3'
       || typeof check.catalogVersion !== 'string' || !/^[a-f0-9]{64}$/.test(check.catalogVersion)
@@ -236,10 +266,10 @@ export async function loadCompatibility(workspace: Workspace, signal: AbortSigna
       || !check.checks.every((item: RuleCheck, index: number) => isRuleCheck(item)
         && item.rule === ['C01', 'C02', 'C03', 'C04', 'C05', 'C06', 'C08', 'C09', 'C10'][index]
         && (item.state !== 'NOT_APPLICABLE' || ['C06', 'C09'].includes(item.rule)
-          && !workspace.selections.some(selection => selection.category === 'GPU')))
+          && !hasGpu))
       || !Array.isArray(check.missing) || !check.missing.every(isMissingPart)
       || check.complete !== (check.missing.length === 0)
-      || check.complete && !workspace.integratedGraphicsCpuId && !workspace.selections.some(item => item.category === 'GPU')
+      || check.complete && !workspace.integratedGraphicsCpuId && !hasGpu
       || !Array.isArray(check.unexecutedRules) || check.unexecutedRules.length !== 0
       || !Array.isArray(check.unexecutedExtensions) || check.unexecutedExtensions.length !== 6
       || !check.unexecutedExtensions.every((item: { rule: string; reason: string }, index: number) => item
@@ -247,10 +277,7 @@ export async function loadCompatibility(workspace: Workspace, signal: AbortSigna
       || check.status !== (check.checks.some((item: RuleCheck) => item.state === 'FAIL') ? 'INCOMPATIBLE'
         : !check.complete ? 'INCOMPLETE'
         : check.checks.every((item: RuleCheck) => ['PASS', 'NOT_APPLICABLE'].includes(item.state)) ? 'CORE_PASSED' : 'UNVERIFIED')
-      || check.corePassed !== (check.status === 'CORE_PASSED')) {
-    throw new Error('兼容检测数据异常，已保留当前选择，请重试。')
-  }
-  return check as Compatibility
+      || check.corePassed !== (check.status === 'CORE_PASSED'))
 }
 
 function isRuleCheck(item: RuleCheck): boolean {

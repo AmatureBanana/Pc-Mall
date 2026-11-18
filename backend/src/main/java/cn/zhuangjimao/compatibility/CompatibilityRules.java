@@ -37,10 +37,20 @@ public final class CompatibilityRules {
 
     /** Pure incremental pruning for server-owned recommendation snapshots; pending parts may be added later. */
     public static boolean canComplete(Map<HardwareCategory, JsonNode> parameters, int memoryQuantity) {
+        var state = candidateState(parameters, memoryQuantity);
+        return state != RuleState.FAIL && state != RuleState.UNKNOWN;
+    }
+
+    /** Distinguishes confirmed conflicts from missing data in server-owned candidate snapshots. */
+    public static RuleState candidateState(Map<HardwareCategory, JsonNode> parameters, int memoryQuantity) {
         var parts = new java.util.EnumMap<HardwareCategory, Part>(HardwareCategory.class);
         parameters.forEach((category, fields) -> parts.put(category,
                 new Part(category, fields, category == MEMORY ? memoryQuantity : 1)));
-        return check(parts).stream().noneMatch(result -> result.state() == RuleState.FAIL || result.state() == RuleState.UNKNOWN);
+        var states = java.util.EnumSet.noneOf(RuleState.class);
+        for (var result : check(parts)) states.add(result.state());
+        if (states.contains(RuleState.FAIL)) return RuleState.FAIL;
+        if (states.contains(RuleState.UNKNOWN)) return RuleState.UNKNOWN;
+        return states.contains(RuleState.PENDING) ? RuleState.PENDING : RuleState.PASS;
     }
 
     static List<RuleResult> check(Map<HardwareCategory, Part> parts) {

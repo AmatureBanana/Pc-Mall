@@ -32,7 +32,8 @@ public final class HardwareParameters {
                     text("igpuOutputInterfaces","核显显示接口"),text("igpuMaxResolutionHdmi","核显 HDMI 最大分辨率"),
                     text("igpuMaxResolutionDisplayPort","核显 DisplayPort 最大分辨率"),text("igpuMaxResolutionEdp","核显 eDP 最大分辨率"),integer("igpuMaxDisplays","核显最大显示器数","台",false),
                     number("peakPowerEstimate","峰值功耗估算","W",true), set("memoryGenerations","支持内存代际",false,DDR),
-                    integer("cores","核心数","核",false),integer("threads","线程数","线程",false),number("basePower","基础功耗","W",false),number("tdp","TDP","W",false));
+                    integer("cores","核心数","核",false),integer("threads","线程数","线程",false),number("basePower","基础功耗","W",false),number("tdp","TDP","W",false),
+                    integer("geekbench7SingleCore","Geekbench 7 单核","分",false),integer("geekbench7MultiCore","Geekbench 7 多核","分",false));
             case MOTHERBOARD -> List.of(choice("socket","CPU 插槽",true,SOCKETS),choice("formFactor","主板板型",true,BOARDS),
                     set("memoryGenerations","支持内存代际",true,DDR),integer("memorySlots","内存插槽数","个",true),
                     set("displayOutputs","核显视频输出（空集合表示无）",true,OUTPUTS),set("gpuInterfaces","独显安装接口（空集合表示无）",true,List.of("PCIe x16","PCIe x8","PCIe x4")),
@@ -93,6 +94,30 @@ public final class HardwareParameters {
         } catch (CatalogException exception) {
             return false;
         }
+    }
+
+    static JsonNode sourcedField(JsonNode parameters, String code, HardwareCategory category) {
+        JsonNode found = null;
+        for (var field : parameters) if (field.path("code").asText().equals(code)) {
+            if (found != null) return null;
+            found = field;
+        }
+        return found != null && httpUrl(found.path("sourceUrl").asText())
+                && isValidValue(category, code, found.get("value")) ? found : null;
+    }
+
+    static BigDecimal sourcedNumber(JsonNode parameters, HardwareCategory category, String code, String unit) {
+        var field = sourcedField(parameters, code, category);
+        return field != null && field.path("unit").asText().equals(unit) ? field.path("value").decimalValue() : null;
+    }
+
+    static BigDecimal sourcedSsdCapacity(JsonNode parameters) {
+        var capacity = sourcedNumber(parameters, HardwareCategory.SSD, "capacity", "GB");
+        var original = sourcedField(parameters, "originalCapacity", HardwareCategory.SSD);
+        if (capacity == null || original == null || !Set.of("GB", "TB", "GiB", "TiB").contains(original.path("unit").asText()))
+            return null;
+        var converted = PerformanceScores.ssdGigabytes(original.path("value").decimalValue(), original.path("unit").asText());
+        return converted.compareTo(capacity) == 0 ? capacity : null;
     }
 
     private static void validateValue(Field field, JsonNode value) {

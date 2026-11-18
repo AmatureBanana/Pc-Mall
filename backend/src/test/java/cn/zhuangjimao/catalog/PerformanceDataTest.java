@@ -59,6 +59,26 @@ class PerformanceDataTest {
         }
         throw new AssertionError("Missing rating input: "+code);
     }
+
+    @Test void seededCpuModelsExposeTheirOwnGeekbench7ScoresAndSource() throws Exception {
+        var expected = Map.of("INTEL-I5-14600K", List.of(2512, 17129), "INTEL-I5-14600KF", List.of(2458, 17209),
+                "AMD-R7-7800X3D", List.of(2437, 15609));
+        for (var entry : expected.entrySet()) {
+            var parameters = detail(entry.getKey()).path("parameters");
+            var scores = new ArrayList<Integer>();
+            for (var code : List.of("geekbench7SingleCore", "geekbench7MultiCore")) {
+                var matching = new ArrayList<JsonNode>();
+                for (var parameter : parameters) if (parameter.path("code").asText().equals(code)) matching.add(parameter);
+                assertThat(matching).as("%s/%s", entry.getKey(), code).hasSize(1);
+                var score = matching.getFirst();
+                assertThat(score.path("unit").asText()).isEqualTo("分");
+                assertThat(score.path("sourceUrl").asText()).isEqualTo("https://browser.geekbench.com/processor-benchmarks");
+                scores.add(score.path("value").asInt());
+            }
+            assertThat(scores).as(entry.getKey()).isEqualTo(entry.getValue());
+        }
+    }
+
     @Test void threeScenarioManifestsReferenceDistinctRealSaleUnitsWithDemoPricesAndSufficientInputs() throws Exception {
         var scenarios=json.readTree(Files.readString(Path.of("data/performance-v1/scenarios.json")));
         for (String scenario:List.of("office","gaming","creation")) {

@@ -26,8 +26,4 @@ public final class RecommendationRules {
         return new BigDecimal("100.000000");
     }
 
-    public static BigDecimal office(BigDecimal cpu, BigDecimal memory, BigDecimal ssd) {
-        return cpu.multiply(new BigDecimal("0.50")).add(memory.multiply(new BigDecimal("0.30")))
-                .add(ssd.multiply(new BigDecimal("0.20")));
-    }
 }

@@ -75,6 +75,12 @@ class CatalogAdministration {
                 invalid("更改品牌或型号时，请先清空旧型号的速率、时序或顺序读写评分参数，保存后按新型号补录。");
             }
             CapacityPerformance.removeProfileFields(product.category(),parameters);
+            for (int i = parameters.size() - 1; i >= 0; i--) {
+                var parameter = parameters.get(i);
+                if (!parameter.path("code").asText().startsWith("geekbench7")) continue;
+                if (parameter.hasNonNull("value")) invalid("更改品牌或型号时，请先清空 Geekbench 7 单核和多核成绩，保存后按新型号补录。");
+                parameters.remove(i);
+            }
         }
         String description = text(input,"description",10000);
         if (product.status().equals("ON_SALE")) validateSale(fields,description,parameters);

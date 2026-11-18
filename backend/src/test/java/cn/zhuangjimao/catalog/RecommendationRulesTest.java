@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.*;
+import static cn.zhuangjimao.catalog.HardwareCategory.*;
 
 class RecommendationRulesTest {
     @Test void officeUsesCapacityNodesAndHundredPointWeightedScore() {
@@ -16,8 +17,35 @@ class RecommendationRulesTest {
         assertThat(RecommendationRules.capacity(HardwareCategory.MEMORY, new BigDecimal("24"))).isEqualByComparingTo("90");
         assertThat(RecommendationRules.capacity(HardwareCategory.SSD, new BigDecimal("384"))).isEqualByComparingTo("57.5");
         assertThat(RecommendationRules.capacity(HardwareCategory.SSD, new BigDecimal("2000"))).isEqualByComparingTo("100");
-        assertThat(RecommendationRules.office(new BigDecimal("60"), new BigDecimal("80"), new BigDecimal("100")))
-                .isEqualByComparingTo("74");
+    }
+
+    @Test void scenarioWeightsUseTheSameFixedScoresAndDifferentContributions() {
+        var scores = Map.of(CPU, new BigDecimal("60"), GPU, new BigDecimal("50"),
+                MEMORY, new BigDecimal("80"), SSD, new BigDecimal("75"));
+        var expected = Map.of(RecommendationScenario.OFFICE, "69", RecommendationScenario.GAMING, "57.25",
+                RecommendationScenario.CREATION, "62");
+        expected.forEach((scenario, total) -> {
+            var actual = scores.entrySet().stream().map(item -> scenario.contribution(item.getKey(), item.getValue()))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            assertThat(actual).as(scenario.name()).isEqualByComparingTo(total);
+        });
+        assertThat(PerformanceScores.score("CPU", new BigDecimal("110"))).isEqualByComparingTo("35");
+        assertThat(PerformanceScores.score("GPU", new BigDecimal("1100"))).isEqualByComparingTo("35");
+        assertThat(PerformanceScores.score("GPU", new BigDecimal("1400"))).isEqualByComparingTo("40");
+    }
+
+    @Test void scenarioMinimumsIncludeTheBoundaryAndExcludeValuesJustBelowIt() {
+        var minimums = Map.of(RecommendationScenario.OFFICE, Map.of(CPU, 25, MEMORY, 8, SSD, 256),
+                RecommendationScenario.GAMING, Map.of(CPU, 35, GPU, 40, MEMORY, 16, SSD, 512),
+                RecommendationScenario.CREATION, Map.of(CPU, 35, GPU, 35, MEMORY, 16, SSD, 512));
+        minimums.forEach((scenario, thresholds) -> thresholds.forEach((category, minimum) -> {
+            var boundary = BigDecimal.valueOf(minimum);
+            assertThat(scenario.meetsMinimum(category, boundary)).isTrue();
+            assertThat(scenario.meetsMinimum(category, boundary.subtract(new BigDecimal("0.01")))).isFalse();
+        }));
+        assertThat(RecommendationScenario.OFFICE.requiresGpu()).isFalse();
+        assertThat(RecommendationScenario.GAMING.requiresGpu()).isTrue();
+        assertThat(RecommendationScenario.CREATION.requiresGpu()).isTrue();
     }
 
     @Test void closeScoresPreferPriceAndThenNumericProductIdsIndependentOfInputOrder() {
@@ -30,8 +58,23 @@ class RecommendationRulesTest {
         assertThat(RecommendationSearch.choose(List.of())).isEmpty();
     }
 
+    @Test void everyProductIdBreaksTheTieBeforeMemoryQuantity() {
+        var oneModuleWithHigherSsdId = tiedPlan(1, 20);
+        var twoModulesWithLowerSsdId = tiedPlan(2, 10);
+        assertThat(RecommendationSearch.choose(List.of(oneModuleWithHigherSsdId, twoModulesWithLowerSsdId)))
+                .contains(twoModulesWithLowerSsdId);
+    }
+
+    private RecommendationSearch.Plan tiedPlan(int memoryQuantity, long ssdId) {
+        BigDecimal zero = BigDecimal.ZERO;
+        var memory = new RecommendationSearch.Candidate(MEMORY, 5, memoryQuantity, zero, zero, null, false, zero);
+        var ssd = new RecommendationSearch.Candidate(SSD, ssdId, 1, zero, zero, null, false, zero);
+        return new RecommendationSearch.Plan(Map.of(MEMORY, memory, SSD, ssd), new BigDecimal("900"), new BigDecimal("80"));
+    }
+
     private RecommendationSearch.Plan plan(long id, String price, String score) {
-        var candidate = new RecommendationSearch.Candidate(HardwareCategory.CPU, id, 1, new BigDecimal(price), new BigDecimal(score), null, true);
+        var candidate = new RecommendationSearch.Candidate(HardwareCategory.CPU, id, 1, new BigDecimal(price),
+                new BigDecimal(score), null, true, new BigDecimal(score));
         return new RecommendationSearch.Plan(Map.of(HardwareCategory.CPU, candidate), new BigDecimal(price), new BigDecimal(score));
     }
 
@@ -50,18 +93,21 @@ class RecommendationRulesTest {
             var choices = new ArrayList<RecommendationSearch.Candidate>();
             for (int index = 1; index <= 20; index++) choices.add(new RecommendationSearch.Candidate(category,
                     category.ordinal() * 100L + index, 1, new BigDecimal(category == HardwareCategory.CPU ? "1000" : "100"),
-                    new BigDecimal(category == HardwareCategory.CPU ? "50" : "10"), parameters.get(category), category == HardwareCategory.CPU));
+                    new BigDecimal(category == HardwareCategory.CPU ? "50" : "10"), parameters.get(category), category == HardwareCategory.CPU, BigDecimal.ZERO));
             pools.put(category, choices);
         }
         pools.get(HardwareCategory.CPU).add(new RecommendationSearch.Candidate(HardwareCategory.CPU, 1000, 1,
-                new BigDecimal("100"), new BigDecimal("25"), parameters.get(HardwareCategory.CPU), true));
-        pools.put(HardwareCategory.GPU, List.of(new RecommendationSearch.Candidate(HardwareCategory.GPU, 0, 1, BigDecimal.ZERO, BigDecimal.ZERO, null, false)));
+                new BigDecimal("100"), new BigDecimal("25"), parameters.get(HardwareCategory.CPU), true, BigDecimal.ZERO));
+        pools.put(HardwareCategory.GPU, List.of(new RecommendationSearch.Candidate(
+                HardwareCategory.GPU, 0, 1, BigDecimal.ZERO, BigDecimal.ZERO, null, false, BigDecimal.ZERO)));
         var bounded = RecommendationSearch.search(pools, new BigDecimal("10000"));
         assertThat(bounded).hasSize(64);
         for (var category : HardwareCategory.values()) assertThat(bounded.stream().map(item -> item.parts().get(category)).distinct().count()).isLessThanOrEqualTo(15);
         var affordable = RecommendationSearch.choose(RecommendationSearch.search(pools, new BigDecimal("700"))).orElseThrow();
         assertThat(affordable.total()).isEqualByComparingTo("700");
         assertThat(affordable.parts().get(HardwareCategory.CPU).productId()).isEqualTo(1000);
+        assertThat(RecommendationSearch.inspectFailure(pools, new BigDecimal("699.99")))
+                .isEqualTo(RecommendationSearch.FailureEvidence.NOT_SEARCHED);
     }
 
     private JsonNode fields(ObjectMapper json, String values) throws Exception {

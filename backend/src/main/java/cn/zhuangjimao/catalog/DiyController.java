@@ -18,10 +18,12 @@ class DiyController {
     DiyController(DiyQuotation quotation) { this.quotation = quotation; }
 
     @GetMapping("/api/diy/quote")
-    ResponseEntity<QuoteResponse> quote(@RequestParam MultiValueMap<String, String> query) {
+    ResponseEntity<QuoteResponse> quote(@RequestParam MultiValueMap<String, String> query) throws Exception {
         var selections = new EnumMap<HardwareCategory, Long>(HardwareCategory.class);
         long revision = -1;
         long memoryQuantity = 1;
+        Long integratedGraphicsCpuId = null;
+        boolean assessPerformance = false;
         try {
             for (var entry : query.entrySet()) {
                 if (entry.getValue().size() != 1 || !entry.getValue().get(0).matches("0|[1-9][0-9]{0,15}")) throw new IllegalArgumentException();
@@ -29,19 +31,24 @@ class DiyController {
                 if (value > MAX_SAFE_INTEGER) throw new IllegalArgumentException();
                 if (entry.getKey().equals("revision")) revision = value;
                 else if (entry.getKey().equals("memoryQuantity")) memoryQuantity = value;
+                else if (entry.getKey().equals("integratedGraphicsCpuId")) integratedGraphicsCpuId = value;
+                else if (entry.getKey().equals("assessPerformance") && value == 1) assessPerformance = true;
                 else {
                     if (value < 1) throw new IllegalArgumentException();
                     selections.put(HardwareCategory.valueOf(entry.getKey()), value);
                 }
             }
-            if (revision < 0 || !DiyMemory.validQuantity(memoryQuantity, selections.containsKey(HardwareCategory.MEMORY))) {
+            if (revision < 0 || !DiyMemory.validQuantity(memoryQuantity, selections.containsKey(HardwareCategory.MEMORY))
+                    || integratedGraphicsCpuId != null && (!assessPerformance || selections.containsKey(HardwareCategory.GPU)
+                    || !integratedGraphicsCpuId.equals(selections.get(HardwareCategory.CPU)))) {
                 throw new IllegalArgumentException();
             }
         } catch (IllegalArgumentException exception) {
             throw new CatalogException(HttpStatus.BAD_REQUEST, "INVALID_CONFIGURATION", "配置须含有效修订号，每类最多一个商品引用。所选内存数量须为 1～4 根。");
         }
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(new QuoteResponse(quotation.quote(revision, selections, (int) memoryQuantity)));
+                .body(new QuoteResponse(quotation.quote(revision, selections, (int) memoryQuantity,
+                        assessPerformance, integratedGraphicsCpuId != null)));
     }
 
     record QuoteResponse(DiyQuotation.Quote data) {}

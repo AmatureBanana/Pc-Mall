@@ -1,5 +1,67 @@
 import { expect, test } from '@playwright/test'
 
+test('DIY scene assessment starts when a recommended configuration is manually changed', async ({ page, request }) => {
+  const { data: products } = await (await request.get('/api/products')).json() as {
+    data: { id: number; category: string; sku: string }[]
+  }
+  const skus = ['INTEL-I5-14600KF', 'ASUS-TUF-B760M-PLUS-WIFI', 'NVIDIA-RTX4070SUPER-FE',
+    'KINGSTON-KF560C36BBE2-16', 'SAMSUNG-MZ-V9P1T0BW', 'CORSAIR-CP-9020295', 'DEEPCOOL-CC560', 'DEEPCOOL-AK400']
+  const selections = skus.map(sku => {
+    const product = products.find(item => item.sku === sku)!
+    return { category: product.category, productId: product.id, source: 'RECOMMENDATION' }
+  })
+  await page.addInitScript(saved => {
+    const key = 'pc-mall.diy.workspace.v1'
+    if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, JSON.stringify(saved))
+  }, { version: 1, revision: 1, selections })
+  await page.goto('/#diy')
+  await expect(page.getByRole('region', { name: '兼容分项诊断' })).toContainText('核心检测通过')
+  const performance = page.getByRole('region', { name: '整机性能' })
+  await expect(performance).toHaveCount(0)
+
+  const memory = page.getByRole('navigation', { name: 'DIY 硬件分类' }).getByRole('button', { name: /^内存 / })
+  await memory.click()
+  await page.getByRole('button', { name: '增加内存数量' }).click()
+  await expect(performance).toContainText('90.00 / 100')
+  await expect(page.getByRole('region', { name: '配置修订' }).locator('.diy-quote-meta + section'))
+    .toHaveAttribute('aria-label', '整机性能')
+  await expect(performance.locator('.score-display strong')).toHaveCSS('font-size', '32px')
+  await expect(performance.locator('.score-display strong')).toHaveCSS('color', 'rgb(232, 68, 25)')
+  await expect(performance).toContainText('推荐创作、游戏、办公')
+  await page.getByRole('button', { name: '减少内存数量' }).click()
+  await expect(performance).toContainText('70.00 / 100')
+  await expect(performance.locator('.score-display strong')).toHaveCSS('color', 'rgb(255, 128, 0)')
+  await expect(performance).toContainText('限制分档 · 内存容量')
+  await page.reload()
+  await expect(performance).toContainText('推荐游戏、办公')
+
+  const quote = (url: URL) => url.pathname === '/api/diy/quote' && url.searchParams.has('assessPerformance')
+  await page.route(quote, async route => {
+    const response = await route.fetch()
+    const body = await response.json()
+    body.data.assessment = { score: null, weightedScore: null, scenario: null, bottlenecks: [], missing: ['CPU 单核'] }
+    await route.fulfill({ response, json: body })
+  })
+  await page.reload()
+  await expect(performance).toContainText('评分待核验 · CPU 单核')
+  await expect(performance).not.toContainText('/ 100')
+  await page.unroute(quote)
+
+  await page.route('**/api/compatibility/check', route => route.fulfill({ status: 503, json: { data: { status: 'ERROR' } } }))
+  await page.reload()
+  await expect(performance).toContainText('评分需当前配置可售且通过兼容性检查')
+  await expect(performance).not.toContainText('/ 100')
+  await page.unroute('**/api/compatibility/check')
+
+  await page.getByRole('button', { name: '选择 AMD Ryzen 7 7800X3D', exact: true }).click()
+  await expect(page.getByRole('region', { name: '兼容分项诊断' })).toContainText('发现冲突')
+  await expect(performance).toContainText('评分需当前配置可售且通过兼容性检查')
+  await expect(performance).not.toContainText('/ 100')
+  await page.getByRole('button', { name: '移除 显卡', exact: true }).click()
+  await expect(performance).toContainText('选齐配件后计算')
+  await expect(performance).not.toContainText('推荐游戏')
+})
+
 test('editing a configuration automatically saves only this tab references and survives reload', async ({ page }) => {
   await page.goto('/#diy')
   await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()

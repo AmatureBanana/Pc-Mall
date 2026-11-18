@@ -1,7 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { Product } from './catalog'
 import {
-  describeRestoration, loadCompatibility, loadQuote, maxDiyMemoryQuantity, readSeen, rememberSeen, restoreWorkspace, saveWorkspace,
+  describeRestoration, isManualWorkspace, loadCompatibility, loadQuote, maxDiyMemoryQuantity, readSeen, rememberSeen, restoreWorkspace, saveWorkspace,
   type HardwareCategory, type Restoration, type Selection, type Workspace,
 } from './diy'
 import { useCatalogRequest } from './useCatalogRequest'
@@ -18,16 +18,17 @@ export function useDiyWorkspace(isEditing: () => boolean) {
   const restored = restoreWorkspace()
   const workspace = ref(restored.workspace)
   const storageWarning = ref(restored.warning)
-  const quotation = useCatalogRequest(signal => loadQuote(workspace.value, signal), '参考报价')
+  const quotation = useCatalogRequest(signal => loadQuote(workspace.value, signal, !isEditing() && isManualWorkspace(workspace.value)), '参考报价')
   const compatibility = useCatalogRequest(signal => loadCompatibility(workspace.value, signal), '兼容检测')
   const restoration = ref<RestorationState>({ phase: 'idle' })
   let restoreAttempt = 0
   const count = computed(() => workspace.value.selections.length + (workspace.value.integratedGraphicsCpuId ? 1 : 0))
 
   function change(selections: Selection[], integratedGraphicsCpuId = workspace.value.integratedGraphicsCpuId,
-    memoryQuantity = workspace.value.memoryQuantity ?? 1) {
+    memoryQuantity = workspace.value.memoryQuantity ?? 1, manuallyEdited = selections.some(item => item.source === 'RECOMMENDATION')) {
     const cpu = selections.find(item => item.category === 'CPU')
     workspace.value = { version: 1, revision: workspace.value.revision + 1, selections,
+      ...(manuallyEdited ? { manuallyEdited: true } : {}),
       ...(memoryQuantity > 1 && selections.some(item => item.category === 'MEMORY') ? { memoryQuantity } : {}),
       ...(integratedGraphicsCpuId && cpu?.productId === integratedGraphicsCpuId && !selections.some(item => item.category === 'GPU')
         ? { integratedGraphicsCpuId } : {}) }
@@ -65,7 +66,8 @@ export function useDiyWorkspace(isEditing: () => boolean) {
   }
   function clear() { if (count.value) change([]) }
   function load(workspace: Workspace) {
-    change(workspace.selections.map(item => ({ ...item })), workspace.integratedGraphicsCpuId ?? 0, workspace.memoryQuantity ?? 1)
+    change(workspace.selections.map(item => ({ ...item })), workspace.integratedGraphicsCpuId ?? 0,
+      workspace.memoryQuantity ?? 1, workspace.manuallyEdited === true)
   }
   // The active restoration already performs both authoritative reads. Background events must not
   // abort its requests; edits still refresh immediately and supersede the old restoration.
