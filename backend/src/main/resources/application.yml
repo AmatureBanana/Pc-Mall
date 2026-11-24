@@ -25,6 +25,7 @@ spring:
   flyway:
     clean-disabled: true
     validate-migration-naming: true
+    locations: classpath:db/migration,classpath:db/catalog
   jackson:
     default-property-inclusion: non_null
 mybatis:

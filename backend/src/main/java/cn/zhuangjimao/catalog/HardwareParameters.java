@@ -40,7 +40,7 @@ public final class HardwareParameters {
                     field("ssdSlots","SSD 有效安装组合","SSD_SLOTS","",true,List.of()),
                     set("ssdFormFactors","SSD 规格集合（旧资料）",false,SSD_FORMS),set("ssdInterfaces","SSD 接口集合（旧资料）",false,List.of("PCIe","SATA")),
                     set("ssdProtocols","SSD 协议集合（旧资料）",false,List.of("NVMe","AHCI")),integer("m2Slots","M.2 插槽数","个",false));
-            case GPU -> List.of(text("boardVariant","显卡版本"),number("vram","显存容量","GB",false),
+            case GPU -> List.of(text("boardVariant","显卡版本"),text("gpuChipset","GPU 芯片型号"),number("vram","显存容量","GB",false),
                     choice("installationInterface","安装接口",true,List.of("PCIe x16","PCIe x8","PCIe x4")),text("pcieGeneration","PCIe 代际"),
                     number("boardPowerEstimate","总板卡功耗估算","W",true),number("length","显卡长度","mm",true),set("displayOutputs","有效视频输出",true,OUTPUTS));
             case MEMORY -> List.of(choice("generation","内存代际",true,DDR),number("totalCapacity","内存容量","GB",true),integer("stickCount","实际条数","条",true),

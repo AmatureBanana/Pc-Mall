@@ -9,6 +9,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
+import java.math.BigDecimal;
 import java.net.*;
 import java.net.http.*;
 import java.util.*;
@@ -65,6 +66,42 @@ class PerformanceAdministrationTest {
         var saved=post(admin,"/api/admin/products/"+id+"/performance",input);
         assertThat(saved.statusCode()).as(saved.body()).isEqualTo(200);
     }
+
+    @Test void recommendationReadsTheUpdatedCpuScore() throws Exception {
+        long id = product("recommendation");
+        db.update("""
+                UPDATE product_specifications fixture
+                JOIN products p ON p.sku='INTEL-I5-14600K'
+                JOIN product_specifications seed ON seed.product_id=p.id
+                SET fixture.parameters=seed.parameters WHERE fixture.product_id=?
+                """, id);
+        db.update("UPDATE products SET price=1599.00,stock=10 WHERE id=?", id);
+        var otherCpus = db.queryForList("SELECT id,stock FROM products WHERE category='CPU' AND stock>0 AND id<>?", id);
+        try {
+            db.update("UPDATE products SET stock=0 WHERE category='CPU' AND id<>?", id);
+            var shopper = browser();
+            var request = Map.of("scenario", "OFFICE", "budget", "10000.00");
+            String path = "/api/admin/products/" + id + "/performance";
+            var score = reference(0);
+            assertThat(post(admin, path, score).statusCode()).isEqualTo(200);
+            var before = data(post(shopper, "/api/recommendations", request));
+            assertThat(before.path("status").asText()).isEqualTo("SUCCESS");
+            assertThat(before.path("integratedGraphicsCpuId").asLong()).isEqualTo(id);
+            assertThat(new BigDecimal(before.path("scores").path("cpu").asText())).isEqualByComparingTo("62.5");
+
+            score.put("revision", 1);
+            score.put("rawScore", "125");
+            assertThat(post(admin, path, score).statusCode()).isEqualTo(200);
+            var after = data(post(shopper, "/api/recommendations", request));
+            assertThat(after.path("status").asText()).isEqualTo("SUCCESS");
+            assertThat(after.path("integratedGraphicsCpuId").asLong()).isEqualTo(id);
+            assertThat(new BigDecimal(after.path("scores").path("cpu").asText())).isEqualByComparingTo("37.5");
+        } finally {
+            for (var cpu : otherCpus) db.update("UPDATE products SET stock=? WHERE id=?", cpu.get("stock"), cpu.get("id"));
+            db.update("UPDATE products SET stock=0 WHERE id=?", id);
+        }
+    }
+
     @Test void missingInvalidAndChangedModelNeverProduceDefaultEffectiveScores() throws Exception {
         long id=product("invalid"); String path="/api/admin/products/"+id;
         var missing=data(get(browser(),"/api/products/"+id)).path("performance");

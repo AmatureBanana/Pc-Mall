@@ -278,7 +278,9 @@ class ConfigurationCartTest {
         assertThat(data(get(owner, "/api/cart"))).isEqualTo(mixed);
         long singleId = mixed.path("items").get(0).path("id").asLong();
         assertThat(delete(owner, "/api/cart/items/" + singleId).statusCode()).isEqualTo(200);
-        assertThat(data(get(owner, "/api/cart")).path("configurations")).hasSize(2);
+        var remaining = data(get(owner, "/api/cart"));
+        assertThat(remaining.path("items")).isEmpty();
+        assertThat(remaining.path("configurations")).isEqualTo(mixed.path("configurations"));
         assertThat(post(owner, PATH, Map.of("selections", selections, "memoryQuantity", 2)).statusCode()).isEqualTo(200);
     }
 

@@ -1,6 +1,6 @@
 # 商品数据、图像与依赖来源
 
-任务08新增Intel i5-14600K和官方Blender受控样本，当前正常种子为13件商品；逐字段来源、快照SHA-256、CC0归因与型号级参考限制见[性能数据契约](performance-data.md)和 `data/performance-v1/manifest.json`。以下12件表格保留任务01的历史来源说明。
+任务08新增 Intel i5-14600K 和官方 Blender 受控样本，形成 13 件基础在售商品；逐字段来源、快照 SHA-256、CC0 归因与型号级参考限制见[性能数据契约](performance-data.md)和 `data/performance-v1/manifest.json`。默认演示商城通过 V32 补充到 500 件，来源及库存规则见[目录扩充记录](catalog-expansion.md)。以下 12 件表格保留任务01的历史来源说明。
 
 后续[全商品性能标签](product-performance-tags.md)增加独立 `performance-amd-v1` 包及V16，补充AMD型号级参考，保留同一官方快照、CC0、UUID与校验值；其他类别标签只读取已核验参数，不新增统一评分。
 
@@ -44,4 +44,4 @@
 | [Playwright](https://github.com/microsoft/playwright) | 1.64.1 | Apache-2.0 |
 | [Apache Maven / Wrapper](https://github.com/apache/maven-wrapper) | Maven 3.9.11 / Wrapper 3.3.4 | Apache-2.0 |
 
-全部第三方组件以依赖方式使用，未复制参考商城业务源码或硬件数据库。分发组件时保留各包内原有 LICENSE/NOTICE。MySQL Server 8.0.45（GPL-2.0）与 Edge 使用本机已有安装，不把它们的二进制或数据目录提交至本仓库。
+第三方软件组件以依赖方式使用，分发组件时保留各包内原有 LICENSE/NOTICE。V32 商品快照的归因见[目录扩充记录](catalog-expansion.md)。MySQL Server 8.0.45（GPL-2.0）与 Edge 使用本机已有安装，不把它们的二进制或数据目录提交至本仓库。

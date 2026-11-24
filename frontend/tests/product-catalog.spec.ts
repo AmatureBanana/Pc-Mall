@@ -1,12 +1,23 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type APIRequestContext } from '@playwright/test'
 
-test('SYS-T01 catalog: category and search query the real backend', async ({ page }) => {
+async function catalogSize(request: APIRequestContext, query = '') {
+  const response = await request.get(`/api/products${query}`)
+  expect(response.ok()).toBeTruthy()
+  const { data } = await response.json()
+  expect(data.length).toBeGreaterThan(0)
+  return data.length
+}
+
+test('SYS-T01 catalog: category and search query the real backend', async ({ page, request }) => {
+  const allProducts = await catalogSize(request)
+  const memoryProducts = await catalogSize(request, '?category=MEMORY')
+  expect(memoryProducts).toBeLessThan(allProducts)
   await page.goto('/#catalog')
-  await expect(page.getByRole('article')).toHaveCount(13)
+  await expect(page.getByRole('article')).toHaveCount(allProducts)
   const categoryResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('category') === 'MEMORY')
   await page.getByRole('navigation', { name: '硬件分类' }).getByRole('button', { name: '内存', exact: true }).click()
   expect((await categoryResponse).ok()).toBeTruthy()
-  await expect(page.getByRole('article')).toHaveCount(1)
+  await expect(page.getByRole('article')).toHaveCount(memoryProducts)
   await page.getByRole('textbox', { name: '搜索商品' }).fill('kf560c36bbe2-16')
   const searchResponse = page.waitForResponse(response => new URL(response.url()).searchParams.get('keyword') === 'kf560c36bbe2-16')
   await page.getByRole('button', { name: '搜索', exact: true }).click()
@@ -17,10 +28,11 @@ test('SYS-T01 catalog: category and search query the real backend', async ({ pag
   await expect(page.getByText('没有找到符合条件的商品')).toBeVisible()
   await expect(page.getByRole('heading', { name: '商品加载失败' })).toHaveCount(0)
   await page.getByRole('button', { name: '清除筛选' }).click()
-  await expect(page.getByRole('article')).toHaveCount(13)
+  await expect(page.getByRole('article')).toHaveCount(allProducts)
 })
 
-test('SYS-T01 catalog: guest opens memory details and can reload the direct URL', async ({ page }) => {
+test('SYS-T01 catalog: guest opens memory details and can reload the direct URL', async ({ page, request }) => {
+  const allProducts = await catalogSize(request)
   await page.goto('/#catalog')
   await page.getByRole('link', { name: '金士顿 FURY Beast 16GB', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '商品详情' })
@@ -37,7 +49,7 @@ test('SYS-T01 catalog: guest opens memory details and can reload the direct URL'
   await page.screenshot({ path: '../docs/evidence/task-02-memory-detail.png', fullPage: true, animations: 'disabled' })
   await dialog.getByRole('button', { name: '关闭详情' }).click()
   await expect(dialog).toHaveCount(0)
-  await expect(page.getByRole('article')).toHaveCount(13)
+  await expect(page.getByRole('article')).toHaveCount(allProducts)
 })
 
 test('all eight categories are reachable through the real catalog', async ({ page }) => {

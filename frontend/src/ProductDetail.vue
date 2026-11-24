@@ -48,7 +48,7 @@ async function addToCart() {
         <dt>商品 ID</dt><dd>{{ detail.product.id }}</dd><dt>销售 SKU</dt><dd>{{ detail.product.sku }}</dd>
         <dt>品牌</dt><dd>{{ detail.product.brand }}</dd><dt>型号</dt><dd>{{ detail.product.model }}</dd>
         <dt>图片地址</dt><dd><a :href="detail.product.imageUrl" target="_blank" rel="noopener noreferrer">{{ detail.product.imageUrl }}</a></dd>
-        <dt>型号来源</dt><dd><a :href="detail.product.sourceUrl" target="_blank" rel="noopener noreferrer">厂商资料 ↗</a></dd>
+        <dt>型号来源</dt><dd><a :href="detail.product.sourceUrl" target="_blank" rel="noopener noreferrer">型号资料 ↗</a></dd>
       </dl>
       <section class="detail-performance-tags"><h3>性能标签</h3><ProductPerformanceTags :tags="detail.product.performanceTags"/></section>
       <section v-if="detail.performance" class="performance-public" aria-label="性能参考">

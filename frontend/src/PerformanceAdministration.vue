@@ -5,7 +5,7 @@ import AdminField from './AdminField.vue'
 import { AuthError } from './auth'
 import { formatPerformanceScore, performanceReference, savePerformance, type PerformanceView } from './performance'
 
-const props = defineProps<{ id: number; category: string; brand: string; disabled: boolean }>()
+const props = defineProps<{ id: number; disabled: boolean }>()
 const emit = defineEmits<{ updated: [revision: number]; expired: [] }>()
 const data = ref<PerformanceView | null>(null)
 const busy = ref(false), error = ref(''), notice = ref(''), unauthorized = ref(false)
@@ -44,7 +44,7 @@ async function save() {
   try {
     const ids = fields.ids.split(/\s+/).filter(Boolean)
     const result = await savePerformance(props.id, { ...fields, ids: undefined, revision: data.value.revision, valid: fields.valid === 'true',
-      benchmarkVersion: '4.3.0', mappingVersion: 'performance-v1', computeType: props.category === 'CPU' ? 'CPU' : props.brand.toUpperCase() === 'AMD' ? 'HIP' : 'OPTIX',
+      benchmarkVersion: '4.3.0', mappingVersion: 'performance-v1', computeType: data.value.computeType,
       operatingSystem: 'Windows', scenes: ['classroom', 'junkshop', 'monster'], sampleCount: ids.length, sampleIds: ids })
     if (version !== requestVersion) return
     accept(result); emit('updated', result.revision); notice.value = '评分与审计已保存。'
@@ -58,7 +58,7 @@ onUnmounted(() => { requestVersion++ })
 <template>
   <section class="performance-admin" role="region" aria-label="性能评分维护">
     <h3>性能评分维护</h3>
-    <p>固定 Blender 4.3.0 · Windows · {{ category === 'CPU' ? 'CPU' : brand.toUpperCase() === 'AMD' ? 'HIP' : 'OPTIX' }} · performance-v1。内部渲染参考分不代表游戏 FPS。</p>
+    <p>固定 Blender 4.3.0 · Windows<span v-if="data"> · {{ data.computeType }}</span> · performance-v1。内部渲染参考分不代表游戏 FPS。</p>
     <p v-if="data" class="performance-summary"><strong class="performance-score">{{ data.performance.score === null ? '无有效评分' : `当前参考分 ${formatPerformanceScore(data.performance.score)} / 100` }}</strong> · {{ data.performance.note }}</p>
     <p v-if="error" role="alert" class="auth-error">{{ error }}</p>
     <p v-if="notice" role="status" class="auth-success">{{ notice }}</p>

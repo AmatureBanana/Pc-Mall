@@ -54,7 +54,7 @@ public class PerformanceReferences {
     public View detail(long id) throws Exception {
         var product=product(id); rendering(product);
         var saved=store.find(id);
-        return new View(id,product.revision(),saved==null ? json.createObjectNode() : json.readTree(saved.referenceData()),read(id));
+        return new View(id,product.revision(),saved==null ? json.createObjectNode() : json.readTree(saved.referenceData()),read(id),computeType(product,parameters(id)));
     }
 
     @Transactional(rollbackFor=Exception.class)
@@ -90,7 +90,7 @@ public class PerformanceReferences {
         if (!PerformanceScores.MAPPING_VERSION.equals(r.path("mappingVersion").asText())) reasons.add("映射版本须为performance-v1，不能修改冻结策略");
         if (!PerformanceScores.BLENDER_VERSION.equals(r.path("benchmarkVersion").asText())) reasons.add("基准须固定Blender 4.3.0");
         if (!"Windows".equals(r.path("operatingSystem").asText())) reasons.add("采样系统须为Windows");
-        String backend=product.category().equals("CPU") ? "CPU" : product.brand().equalsIgnoreCase("AMD") ? "HIP" : "OPTIX";
+        String backend=computeType(product,parameters);
         if (!backend.equals(r.path("computeType").asText())) reasons.add("计算后端与固定基准不一致");
         String source=r.path("sourceUrl").asText();
         if (!HardwareParameters.httpUrl(source) || !"opendata.blender.org".equals(java.net.URI.create(source).getHost())) reasons.add("来源须为Blender官方Open Data地址");
@@ -110,9 +110,21 @@ public class PerformanceReferences {
             boolean amdAlias=product.brand().equalsIgnoreCase("AMD") && cores.path("value").isIntegralNumber()
                     && cores.path("value").asInt()>0 && HardwareParameters.httpUrl(cores.path("sourceUrl").asText())
                     && device.equals(expected+" "+cores.path("value").asText()+"-Core Processor");
-            if (!device.equals(expected) && !amdAlias) reasons.add("CPU必须精确匹配商品型号，不能混用K/KF等变体或错误核心数");
+            boolean intelGenerationAlias=product.brand().equalsIgnoreCase("Intel") && expected.matches("Intel Core i[3579]-13[0-9]{3}[A-Z]*")
+                    && device.equals("13th Gen " + expected);
+            var igpu=parameter(parameters,"igpuModel");
+            String graphics=igpu.path("value").asText();
+            boolean amdGraphicsAlias=product.brand().equalsIgnoreCase("AMD") && expected.matches("AMD Ryzen [57] 8[0-9]{3}G")
+                    && HardwareParameters.httpUrl(igpu.path("sourceUrl").asText()) && graphics.matches("Radeon 7[0-9]{2}M")
+                    && device.equals(expected + " w/ " + graphics + " Graphics");
+            if (!device.equals(expected) && !amdAlias && !intelGenerationAlias && !amdGraphicsAlias) reasons.add("CPU必须精确匹配商品型号，不能混用K/KF等变体或错误核心数");
         } else {
-            String expected=product.brand()+" "+model.replace(" Founders Edition","").replace(" (AMD reference)","");
+            String chipset=chipset(parameters);
+            String expected=chipset.isEmpty() ? product.brand()+" "+model.replace(" Founders Edition","").replace(" (AMD reference)","") : switch (backend) {
+                case "HIP" -> "AMD " + chipset;
+                case "ONEAPI" -> "Intel(R) Arc(TM) " + chipset.substring("Arc ".length()) + " Graphics";
+                default -> "NVIDIA " + chipset;
+            };
             if (!device.equals(expected) || identity(product,parameters).path("boardVariant").isNull() || identity(product,parameters).path("vram").isNull()) reasons.add("GPU型号、板卡版本和显存须明确匹配");
         }
         return reasons;
@@ -123,8 +135,26 @@ public class PerformanceReferences {
     }
     private ObjectNode identity(Product product,JsonNode parameters) {
         var result=json.createObjectNode().put("category",product.category()).put("brand",product.brand()).put("model",product.model());
-        if (product.category().equals("GPU")) { result.set("boardVariant",value(parameters,"boardVariant")); result.set("vram",value(parameters,"vram")); }
+        if (product.category().equals("GPU")) {
+            result.set("boardVariant",value(parameters,"boardVariant"));
+            result.set("vram",value(parameters,"vram"));
+            String chipset=chipset(parameters);
+            if (!chipset.isEmpty()) result.put("gpuChipset",chipset);
+        }
         return result;
+    }
+    private String computeType(Product product,JsonNode parameters) {
+        if (product.category().equals("CPU")) return "CPU";
+        String chipset=chipset(parameters);
+        if (chipset.startsWith("Arc ")) return "ONEAPI";
+        if (chipset.startsWith("Radeon ") || chipset.isEmpty() && product.brand().equalsIgnoreCase("AMD")) return "HIP";
+        return "OPTIX";
+    }
+    private String chipset(JsonNode parameters) {
+        var field=parameter(parameters,"gpuChipset");
+        if (!HardwareParameters.httpUrl(field.path("sourceUrl").asText())) return "";
+        String value=field.path("value").asText();
+        return value.matches("GeForce RTX [0-9]{4}( Ti)?( SUPER)?|Radeon RX [0-9]{4}( XT| XTX| GRE)?|Arc [AB][0-9]{3}") ? value : "";
     }
     private JsonNode parameters(long id) {
         try { var spec=products.findSpecification(id); return spec==null ? json.createArrayNode() : json.readTree(spec.parameters()); }
@@ -139,5 +169,5 @@ public class PerformanceReferences {
     @JsonInclude(JsonInclude.Include.ALWAYS)
     public record Score(String state,@JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal score,String mappingVersion,JsonNode reference,String note,
                         @JsonInclude(JsonInclude.Include.NON_NULL) @JsonFormat(shape=JsonFormat.Shape.STRING) BigDecimal performanceScore) {}
-    public record View(long productId,long revision,JsonNode reference,Score performance) {}
+    public record View(long productId,long revision,JsonNode reference,Score performance,String computeType) {}
 }

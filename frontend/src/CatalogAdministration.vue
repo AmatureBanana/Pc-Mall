@@ -225,7 +225,7 @@ watch([error, notice], async () => {
       <div class="admin-form-actions"><ElButton type="primary" native-type="submit" :loading="busy" :disabled="loading || unauthorized || schema.length === 0">{{ detail ? '保存修改' : '保存草稿' }}</ElButton><ElButton v-if="detail" :type="detail.product.status === 'ON_SALE' ? 'warning' : 'success'" :disabled="busy || loading || unauthorized" @click="changeStatus">{{ detail.product.status === 'ON_SALE' ? '下架商品' : '上架商品' }}</ElButton><ElButton v-if="detail" :disabled="busy" @click="open(detail.product.id)">重新载入</ElButton><span>上下架使用最近一次保存的资料</span></div>
     </form>
     <PerformanceAdministration v-if="editing && detail && ['CPU', 'GPU'].includes(detail.product.category)" :key="detail.product.id"
-      :id="detail.product.id" :category="detail.product.category" :brand="detail.product.brand" :disabled="busy || loading || unauthorized"
+      :id="detail.product.id" :disabled="busy || loading || unauthorized"
       @updated="performanceUpdated" @expired="emit('expired')"/>
   </div>
 </template>

@@ -108,6 +108,29 @@ class OrderAdministrationTest {
         assertThat(data(get(owner, "/api/orders/" + number))).isEqualTo(completed.path("order"));
     }
 
+    @Test void disablingABuyerPreservesTheirPaidOrder() throws Exception {
+        var owner = account("held", "USER");
+        var admin = account("holdAdm", "ADMIN");
+        var created = create(owner, product("held"));
+        String number = created.path("orderNumber").asText();
+        String orderPath = "/api/orders/" + number;
+        var payment = post(owner, orderPath + "/pay", Map.of());
+        assertThat(payment.statusCode()).isEqualTo(200);
+        var paid = data(payment);
+        long buyerId = data(get(owner, "/api/auth/me")).path("id").asLong();
+        String statusPath = "/api/admin/users/" + buyerId + "/status";
+
+        assertThat(post(admin, statusPath, Map.of("status", "DISABLED", "revision", 0)).statusCode()).isEqualTo(200);
+        assertThat(get(owner, orderPath).statusCode()).isEqualTo(401);
+        assertThat(data(get(admin, "/api/admin/orders/" + number)).path("order")).isEqualTo(paid);
+
+        assertThat(post(admin, statusPath, Map.of("status", "ACTIVE", "revision", 1)).statusCode()).isEqualTo(200);
+        assertThat(get(owner, orderPath).statusCode()).isEqualTo(401);
+        assertThat(post(owner, "/api/auth/login", Map.of("username", prefix + "held",
+                "password", "PaymentPassword123!")).statusCode()).isEqualTo(200);
+        assertThat(data(get(owner, orderPath))).isEqualTo(paid);
+    }
+
     @Test void concurrentAdministratorsProduceOneCompletionAndAudit() throws Exception {
         var owner = account("race", "USER");
         var admins = List.of(account("raceA", "ADMIN"), account("raceB", "ADMIN"));

@@ -5,7 +5,7 @@ async function write(api: APIRequestContext, path: string, data: unknown) {
   return api.post(path, { data, headers: { [csrf.headerName]: csrf.token } })
 }
 
-test('mixed checkout keeps whole groups, rejects aggregate shortage and recovers the same grouped snapshot', async ({ page, playwright }) => {
+test('mixed checkout rejects aggregate shortage and retains grouped snapshots through payment and completion', async ({ page, browser, baseURL, playwright }) => {
   test.setTimeout(90_000)
   const admin = await playwright.request.newContext({ baseURL: process.env.BROWSER_BASE_URL })
   const privateIds: number[] = []
@@ -115,6 +115,43 @@ test('mixed checkout keeps whole groups, rejects aggregate shortage and recovers
     await expect(result.getByLabel('订单成交总额')).toHaveText('¥79,955.50')
     expect((await (await page.request.get(`/api/orders/${committed!.orderNumber}`)).json()).data).toEqual(snapshot)
     await page.screenshot({ path: 'test-results/task17-mixed-order.png', fullPage: true, animations: 'disabled' })
+
+    await result.getByRole('button', { name: '模拟支付', exact: true }).click()
+    const payment = page.getByRole('dialog', { name: '确认模拟支付' })
+    await payment.getByRole('button', { name: '确认模拟支付', exact: true }).click()
+    await expect(result).toContainText('已支付')
+
+    const ordersPage = await browser.newPage({ baseURL, viewport: page.viewportSize() })
+    try {
+      await ordersPage.goto('/#login')
+      const adminLogin = ordersPage.getByRole('dialog', { name: '统一登录' })
+      await adminLogin.getByLabel('用户名', { exact: true }).fill(process.env.BROWSER_ADMIN_USERNAME!)
+      await adminLogin.getByLabel('密码', { exact: true }).fill(process.env.BROWSER_ADMIN_PASSWORD!)
+      await adminLogin.getByRole('button', { name: '登录', exact: true }).click()
+      const administration = ordersPage.getByRole('dialog', { name: '管理后台' })
+      await administration.getByRole('navigation').getByRole('button', { name: '订单管理' }).click()
+      await administration.getByLabel('查询订单号').fill(committed!.orderNumber)
+      await administration.getByRole('button', { name: '查询', exact: true }).click()
+      const orderRow = administration.getByRole('row').filter({ hasText: committed!.orderNumber })
+      await orderRow.getByRole('button', { name: '查看订单' }).click()
+      await expect(administration.getByLabel('订单成交总额')).toHaveText('¥79,955.50')
+      await administration.getByRole('button', { name: '完成交易', exact: true }).click()
+      await administration.getByRole('button', { name: '确认完成', exact: true }).click()
+      await expect(administration.getByRole('status')).toContainText('交易已完成')
+    } finally {
+      await ordersPage.close()
+    }
+
+    await page.reload()
+    await expect(result).toContainText('已完成')
+    await expect(result.getByLabel('订单成交总额')).toHaveText('¥79,955.50')
+    const completed = (await (await page.request.get(`/api/orders/${committed!.orderNumber}`)).json()).data
+    expect(completed.status).toBe('COMPLETED')
+    expect(completed.items).toEqual(snapshot.items)
+    expect(completed.configurations).toEqual(snapshot.configurations)
+    const finalStock = (await (await admin.get(`/api/admin/products/${psu}`)).json()).data
+    expect(finalStock.product.stock).toBe(stock.product.stock)
+    expect(finalStock.reservedStock).toBe(stock.reservedStock)
   } finally {
     await page.unroute('**/api/orders')
     for (const id of privateIds) {

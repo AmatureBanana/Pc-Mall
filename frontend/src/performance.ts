@@ -27,6 +27,7 @@ export interface PerformanceScore {
 }
 export interface PerformanceView {
   productId: number; revision: number; reference: Record<string, unknown>; performance: PerformanceScore
+  computeType: string
 }
 export async function performanceReference(id: number) {
   return await request(`/api/admin/products/${id}/performance`) as PerformanceView
