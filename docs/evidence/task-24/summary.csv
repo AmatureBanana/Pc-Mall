@@ -1,0 +1,14 @@
+operation,concurrency,samples,p95_ms,target_ms,within_target
+F03-check,10,100,17.940,1000,true
+F04-OFFICE,10,100,421.608,3000,true
+F04-GAMING,10,100,290.972,3000,true
+F04-CREATION,10,100,264.239,3000,true
+F05-add,20,200,88.068,2000,true
+F05-read,20,200,11.838,2000,true
+F05-quantity,20,200,51.215,2000,true
+F05-delete,20,200,58.553,2000,true
+F06-create,20,200,76.257,3000,true
+F06-history,20,200,42.192,2000,true
+F06-detail,20,200,10.322,2000,true
+F07-catalog-page,20,200,37.077,2000,true
+F07-order-page,20,200,110.725,2000,true

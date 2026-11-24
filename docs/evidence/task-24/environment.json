@@ -1,0 +1,29 @@
+{
+  "startedAt" : "2026-11-24T22:33:46.642972400+08:00[Asia/Shanghai]",
+  "os" : "Windows 11 10.0 amd64",
+  "logicalProcessors" : 16,
+  "physicalMemoryBytes" : 16419446784,
+  "java" : "21.0.10+8-LTS-217",
+  "springBoot" : "3.5.16",
+  "databasePoolSize" : 5,
+  "catalogVersion" : "performance-acceptance-v1",
+  "catalogSha256" : "d5052157a95c87f46c2a35721e392f381a36171e89b9be4a7269713f80b964e3",
+  "productsOnSale" : 125,
+  "warmupWavesPerOperation" : 3,
+  "timedWavesPerOperation" : 10,
+  "categories" : {
+    "CASE" : 3,
+    "COOLER" : 3,
+    "CPU" : 6,
+    "GPU" : 4,
+    "MEMORY" : 21,
+    "MOTHERBOARD" : 19,
+    "PSU" : 3,
+    "SSD" : 66
+  },
+  "database" : {
+    "databaseName" : "pc_mall_test",
+    "version" : "8.0.45",
+    "bufferPoolBytes" : 134217728
+  }
+}

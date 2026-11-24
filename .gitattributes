@@ -6,3 +6,5 @@ backend/src/main/resources/db/migration/V15__trusted_performance_demo.sql -text
 data/performance-amd-v1/* -text
 data/performance-amd-v1/LICENSE.txt whitespace=-blank-at-eof
 backend/src/main/resources/db/migration/V16__amd_performance_references.sql -text
+data/performance-acceptance-v1/* -text
+data/performance-acceptance-v1/Blender-Open-Data-LICENSE.txt whitespace=-blank-at-eof
