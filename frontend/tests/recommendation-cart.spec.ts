@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
+import { expect, test, type APIRequestContext, type Locator, type Page } from '@playwright/test'
 
 const password = 'RecommendCart23!'
 const cartPath = '/api/cart/configurations'
@@ -37,6 +37,29 @@ async function cart(page: Page) {
   return (await (await page.request.get('/api/cart')).json()).data
 }
 
+async function importRecommendation(page: Page, plan: Locator) {
+  await expect(plan.getByRole('button', { name: '加入购物车', exact: true })).toHaveCount(0)
+  await plan.getByRole('button', { name: '转入 DIY 调整', exact: true }).click()
+  await expect(page).toHaveURL(/#diy$/)
+  await expect(page.getByRole('region', { name: '当前配置' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '统一登录' })).not.toBeVisible()
+  await expect(page.getByRole('dialog', { name: '转入购物车' })).not.toBeVisible()
+}
+
+async function openCartPreview(page: Page) {
+  const confirmation = page.getByRole('dialog', { name: '转入购物车' })
+  await page.getByRole('button', { name: '转入购物车', exact: true }).click()
+  await expect(confirmation).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '统一登录' })).not.toBeVisible()
+  return confirmation
+}
+
+async function openCartSignIn(page: Page) {
+  const confirmation = await openCartPreview(page)
+  await confirmation.getByRole('button', { name: '前往登录' }).click()
+  await expect(page).toHaveURL(/#login$/)
+}
+
 for (const label of ['办公', '游戏', '创作']) {
   test(`${label}推荐经登录重验，再由用户确认整组加购`, async ({ page }) => {
     await page.goto('/')
@@ -54,8 +77,18 @@ for (const label of ['办公', '游戏', '创作']) {
       if (path === cartPath && request.method() === 'POST') posts.push(path)
       if (['/api/diy/quote', '/api/compatibility/check'].includes(path)) rechecks.push(path)
     })
-    await plan.getByRole('button', { name: '加入购物车', exact: true }).click()
-    await expect(page).toHaveURL(/#login$/)
+    await importRecommendation(page, plan)
+    let adjustedMemoryQuantity: number | undefined
+    if (label === '游戏') {
+      await expect(page.getByRole('button', { name: '转入购物车', exact: true })).toBeEnabled()
+      await page.getByRole('button', { name: '替换 内存', exact: true }).click()
+      const quantity = page.locator('output[aria-label="当前内存根数"]')
+      const originalQuantity = Number(await quantity.textContent())
+      await page.getByRole('button', { name: originalQuantity > 1 ? '减少内存数量' : '增加内存数量' }).click()
+      adjustedMemoryQuantity = originalQuantity > 1 ? originalQuantity - 1 : originalQuantity + 1
+      await expect(quantity).toHaveText(String(adjustedMemoryQuantity))
+    }
+    await openCartSignIn(page)
     if (label === '办公') await page.reload()
     rechecks.length = 0
     await signIn(page, username)
@@ -70,6 +103,10 @@ for (const label of ['办公', '游戏', '创作']) {
     expect(restored.origin).toBe('RECOMMENDATION')
     expect(restored.selections.map((part: { productId: number }) => part.productId)).toEqual(ids)
     expect(restored.selections.every((part: { source: string }) => part.source === 'RECOMMENDATION')).toBe(true)
+    if (adjustedMemoryQuantity !== undefined) {
+      expect(restored.memoryQuantity ?? 1).toBe(adjustedMemoryQuantity)
+      await expect(confirmation.getByRole('listitem').filter({ hasText: '内存' })).toContainText(`×${adjustedMemoryQuantity} 根`)
+    }
     await confirm.evaluate((button: HTMLButtonElement) => { button.click(); button.click() })
     await expect(confirmation).not.toBeVisible()
     expect(posts).toHaveLength(1)
@@ -89,8 +126,8 @@ test('登录失效时保留推荐配置，重新登录后仍需主动确认', as
   await signIn(page, username)
   await expect(page.getByRole('button', { name: /^游戏推荐 ·/ })).toBeVisible()
   const plan = await recommendation(page, '游戏')
-  await plan.getByRole('button', { name: '加入购物车', exact: true }).click()
-  const confirmation = page.getByRole('dialog', { name: '转入购物车' })
+  await importRecommendation(page, plan)
+  const confirmation = await openCartPreview(page)
   const confirm = confirmation.getByRole('button', { name: '确定', exact: true })
   await expect(confirm).toBeEnabled()
   const draft = await page.evaluate(() => sessionStorage.getItem('pc-mall.diy.workspace.v1'))
@@ -129,8 +166,8 @@ test('登录时显示仍可购买的库存变动，确认时拦截再次改价',
     expect((await post(admin, `${path}/stock`, { delta: 2, reason: '推荐登录恢复夹具备货' })).status()).toBe(200)
     const plan = await recommendation(page, '办公')
     await expect(plan.getByRole('link', { name: '推荐恢复测试电源' })).toHaveAttribute('href', `#product/${id}`)
-    await plan.getByRole('button', { name: '加入购物车', exact: true }).click()
-    await expect(page).toHaveURL(/#login$/)
+    await importRecommendation(page, plan)
+    await openCartSignIn(page)
     expect((await post(admin, `${path}/stock`, { delta: 1, reason: '推荐登录恢复库存测试' })).status()).toBe(200)
     await page.reload()
     await signIn(page, username)

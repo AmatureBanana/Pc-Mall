@@ -16,7 +16,7 @@ test('DIY scene assessment starts when a recommended configuration is manually c
   }, { version: 1, revision: 1, selections })
   await page.goto('/#diy')
   await expect(page.getByRole('region', { name: '兼容分项诊断' })).toContainText('核心检测通过')
-  const performance = page.getByRole('region', { name: '整机性能' })
+  const performance = page.getByRole('region', { name: '性能评分', exact: true })
   await expect(performance).toHaveCount(0)
 
   const memory = page.getByRole('navigation', { name: 'DIY 硬件分类' }).getByRole('button', { name: /^内存 / })
@@ -24,7 +24,8 @@ test('DIY scene assessment starts when a recommended configuration is manually c
   await page.getByRole('button', { name: '增加内存数量' }).click()
   await expect(performance).toContainText('90.00 / 100')
   await expect(page.getByRole('region', { name: '配置修订' }).locator('.diy-quote-meta + section'))
-    .toHaveAttribute('aria-label', '整机性能')
+    .toHaveAttribute('aria-label', '性能评分')
+  await expect(performance.getByRole('meter')).toHaveAttribute('aria-valuenow', '90')
   await expect(performance.locator('.score-display strong')).toHaveCSS('font-size', '32px')
   await expect(performance.locator('.score-display strong')).toHaveCSS('color', 'rgb(232, 68, 25)')
   await expect(performance).toContainText('推荐创作、游戏、办公')
@@ -279,6 +280,36 @@ test('an authenticated account can enter the same public workspace', async ({ pa
   await page.goto('/#diy')
   await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
   await expect(page.getByRole('region', { name: '当前配置' }).getByLabel('当前参考总价')).toHaveText('¥1,499.00')
+})
+
+test('returning to a category shows the current selection first, including discrete and integrated graphics', async ({ page }) => {
+  await page.goto('/#diy')
+  const navigation = page.getByRole('navigation', { name: 'DIY 硬件分类' })
+  const region = page.getByRole('region', { name: '候选商品' })
+  const cards = region.locator('.diy-product')
+  const category = (name: string) => navigation.getByRole('button', { name: new RegExp('^' + name + ' ') })
+  const select = (name: string) => region.getByRole('button', { name: '选择 ' + name, exact: true }).click()
+
+  await select('AMD Ryzen 7 7800X3D')
+  await category('主板').click()
+  await category('CPU').click()
+  await expect(cards.first().getByRole('heading')).toHaveText('AMD Ryzen 7 7800X3D')
+  await region.getByLabel('候选商品排序').selectOption('price-asc')
+  await expect(cards.first().getByRole('heading')).toHaveText('AMD Ryzen 7 7800X3D')
+
+  await category('显卡').click()
+  await expect(region.getByRole('article', { name: 'CPU 核显候选' })).toBeVisible()
+  await select('NVIDIA GeForce RTX 4070 SUPER')
+  await category('CPU').click()
+  await category('显卡').click()
+  await expect(cards.first().getByRole('heading')).toHaveText('NVIDIA GeForce RTX 4070 SUPER')
+  await expect(cards.nth(1)).toHaveAttribute('aria-label', 'CPU 核显候选')
+
+  await select('CPU 核显')
+  await category('主板').click()
+  await category('显卡').click()
+  await expect(cards.first()).toHaveAttribute('aria-label', 'CPU 核显候选')
+  await expect(cards.first().getByRole('button', { name: '已选择 CPU 核显' })).toBeDisabled()
 })
 
 test('damaged tab storage is reported without deleting it and a new edit can recover', async ({ page }) => {

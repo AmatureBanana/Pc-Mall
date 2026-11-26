@@ -57,7 +57,10 @@ class DiyQuotation {
         if (assessment != null && assessment.score() != null
                 && !compatibility.check(revision, selections, integratedCpuId, memoryQuantity).corePassed())
             assessment = null;
-        return new Quote(revision, List.copyOf(items), valid ? subtotal : null, subtotal, "NOT_CHECKED", assessment);
+        var displayItems = items.stream().map(item -> item.product() == null ? item : new Item(
+                item.category(), item.productId(), item.quantity(), item.state(), item.message(),
+                CatalogBrandNames.localized(item.product()), item.amount())).toList();
+        return new Quote(revision, displayItems, valid ? subtotal : null, subtotal, "NOT_CHECKED", assessment);
     }
 
     @JsonInclude(JsonInclude.Include.ALWAYS)

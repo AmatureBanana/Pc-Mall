@@ -17,10 +17,11 @@ interface ProductMapper {
     @Select(SELECT_PRODUCT + """
             WHERE p.status = 'ON_SALE'
               AND (#{category} IS NULL OR p.category = #{category})
-              AND LOCATE(#{keyword}, CONCAT_WS(' ', p.name, p.brand, p.model, p.sku, p.summary)) > 0
+              AND (LOCATE(#{keyword}, CONCAT_WS(' ', p.name, p.brand, p.model, p.sku, p.summary)) > 0
+                   OR LOCATE(#{manufacturerKeyword}, CONCAT_WS(' ', p.name, p.brand, p.model, p.sku, p.summary)) > 0)
             ORDER BY p.id
             """)
-    List<Product> findOnSale(String category, String keyword);
+    List<Product> findOnSale(String category, String keyword, String manufacturerKeyword);
 
     @Select(SELECT_PRODUCT + " WHERE p.id = #{id}")
     Product findById(long id);

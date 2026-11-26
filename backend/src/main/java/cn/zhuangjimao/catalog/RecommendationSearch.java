@@ -48,9 +48,14 @@ public final class RecommendationSearch {
     }
 
     public static List<Plan> search(Map<HardwareCategory, List<Candidate>> candidates, BigDecimal budget) {
+        boolean requiresDiscrete = candidates.getOrDefault(HardwareCategory.GPU, List.of()).stream()
+                .noneMatch(candidate -> candidate.productId() == 0);
         var pools = new EnumMap<HardwareCategory, List<Candidate>>(HardwareCategory.class);
         for (var category : ORDER) {
-            var pool = candidates.getOrDefault(category, List.of());
+            var pool = candidates.getOrDefault(category, List.of()).stream()
+                    .filter(candidate -> candidate.productId() == 0 || CompatibilityRules.hasVerifiedCandidateFields(
+                            category, candidate.parameters(), requiresDiscrete || category == HardwareCategory.GPU))
+                    .toList();
             if (pool.isEmpty()) return List.of();
             var cheap = Comparator.comparing(Candidate::price).thenComparingLong(Candidate::productId).thenComparingInt(Candidate::quantity);
             var limited = new LinkedHashSet<Candidate>();

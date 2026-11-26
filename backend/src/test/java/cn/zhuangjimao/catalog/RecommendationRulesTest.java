@@ -82,7 +82,7 @@ class RecommendationRulesTest {
         var pools = new EnumMap<HardwareCategory, List<RecommendationSearch.Candidate>>(HardwareCategory.class);
         var json = new ObjectMapper();
         var parameters = Map.of(
-                HardwareCategory.CPU, fields(json, "{\"socket\":\"AM5\",\"peakPowerEstimate\":100}"),
+                HardwareCategory.CPU, fields(json, "{\"socket\":\"AM5\",\"tdp\":100}"),
                 HardwareCategory.MOTHERBOARD, fields(json, "{\"socket\":\"AM5\",\"memoryGenerations\":[\"DDR5\"],\"memorySlots\":4,\"formFactor\":\"Micro-ATX\",\"ssdSlots\":[{\"formFactor\":\"M.2 2280\",\"interface\":\"PCIe\",\"protocol\":\"NVMe\"}]}"),
                 HardwareCategory.MEMORY, fields(json, "{\"generation\":\"DDR5\",\"stickCount\":1}"),
                 HardwareCategory.SSD, fields(json, "{\"formFactor\":\"M.2 2280\",\"interface\":\"PCIe\",\"protocol\":\"NVMe\"}"),
@@ -93,11 +93,16 @@ class RecommendationRulesTest {
             var choices = new ArrayList<RecommendationSearch.Candidate>();
             for (int index = 1; index <= 20; index++) choices.add(new RecommendationSearch.Candidate(category,
                     category.ordinal() * 100L + index, 1, new BigDecimal(category == HardwareCategory.CPU ? "1000" : "100"),
-                    new BigDecimal(category == HardwareCategory.CPU ? "50" : "10"), parameters.get(category), category == HardwareCategory.CPU, BigDecimal.ZERO));
+                    new BigDecimal(category == HardwareCategory.CPU ? "50" : "0"), parameters.get(category), category == HardwareCategory.CPU, BigDecimal.ZERO));
             pools.put(category, choices);
         }
         pools.get(HardwareCategory.CPU).add(new RecommendationSearch.Candidate(HardwareCategory.CPU, 1000, 1,
                 new BigDecimal("100"), new BigDecimal("25"), parameters.get(HardwareCategory.CPU), true, BigDecimal.ZERO));
+        var incompleteBoard = fields(json, "{\"socket\":\"AM5\",\"formFactor\":\"Micro-ATX\"}");
+        for (int index = 0; index < RecommendationSearch.CANDIDATE_LIMIT; index++) {
+            pools.get(MOTHERBOARD).add(new RecommendationSearch.Candidate(MOTHERBOARD, 2000 + index, 1,
+                    new BigDecimal("50"), BigDecimal.ZERO, incompleteBoard, false, BigDecimal.ZERO));
+        }
         pools.put(HardwareCategory.GPU, List.of(new RecommendationSearch.Candidate(
                 HardwareCategory.GPU, 0, 1, BigDecimal.ZERO, BigDecimal.ZERO, null, false, BigDecimal.ZERO)));
         var bounded = RecommendationSearch.search(pools, new BigDecimal("10000"));

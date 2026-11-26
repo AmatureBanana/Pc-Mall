@@ -53,6 +53,16 @@ public final class CompatibilityRules {
         return states.contains(RuleState.PENDING) ? RuleState.PENDING : RuleState.PASS;
     }
 
+    /** Missing facts about this part cannot be supplied by another part later in the search. */
+    public static boolean hasVerifiedCandidateFields(HardwareCategory category, JsonNode parameters, boolean discreteGraphics) {
+        var parts = Map.of(category, new Part(category, parameters));
+        var read = new Read(parts);
+        return check(parts, discreteGraphics).stream()
+                .filter(rule -> rule.state() != RuleState.NOT_APPLICABLE)
+                .flatMap(rule -> rule.details().stream())
+                .allMatch(detail -> read.usable(detail.category(), detail.parameter()));
+    }
+
     static List<RuleResult> check(Map<HardwareCategory, Part> parts) {
         return check(parts, parts.containsKey(GPU));
     }
@@ -76,18 +86,26 @@ public final class CompatibilityRules {
     }
 
     private static RuleResult power(Map<HardwareCategory, Part> parts, boolean gpuSelected) {
-        var fields = new ArrayList<Field>(List.of(Field.of(CPU, "peakPowerEstimate"), Field.of(PSU, "ratedPower")));
+        var fields = new ArrayList<Field>(List.of(Field.of(CPU, "tdp"), Field.of(PSU, "ratedPower")));
         if (gpuSelected) fields.add(Field.of(GPU, "boardPowerEstimate"));
         var read = new Read(parts, fields.toArray(Field[]::new));
         if (!read.allPresent()) return read.pending("C08");
-        if (!read.allUsable()) return read.unknown("C08", "CPU 峰值功耗、显卡总板功耗或电源额定功率缺少已核验值或来源，不能以 TDP 代替峰值。");
-        BigDecimal cpu = read.decimal(CPU, "peakPowerEstimate");
-        BigDecimal gpu = parts.containsKey(GPU) ? read.decimal(GPU, "boardPowerEstimate") : BigDecimal.ZERO;
-        BigDecimal required = cpu.add(gpu).add(new BigDecimal("80")).multiply(new BigDecimal("1.30")).setScale(0, RoundingMode.CEILING);
+        var unknown = new ArrayList<String>();
+        if (!read.usable(CPU, "tdp")) unknown.add("CPU TDP");
+        if (gpuSelected && !read.usable(GPU, "boardPowerEstimate")) unknown.add("显卡整卡功耗");
+        if (!read.usable(PSU, "ratedPower")) unknown.add("电源额定功率");
+        if (!unknown.isEmpty()) {
+            return read.unknown("C08", "缺少可核验的数值或来源：" + String.join("、", unknown) + "。");
+        }
+        BigDecimal cpu = read.decimal(CPU, "tdp");
+        BigDecimal gpu = gpuSelected ? read.decimal(GPU, "boardPowerEstimate") : BigDecimal.ZERO;
+        BigDecimal systemPower = cpu.add(gpu).add(new BigDecimal("80"));
+        BigDecimal required = systemPower.multiply(new BigDecimal("1.15")).setScale(0, RoundingMode.CEILING);
         BigDecimal rated = read.decimal(PSU, "ratedPower");
         return read.result("C08", rated.compareTo(required) >= 0 ? RuleState.PASS : RuleState.FAIL,
-                "最低需求 ceil(1.30 × (" + cpu.toPlainString() + " + " + gpu.toPlainString() + " + 80)) = "
-                        + required.toPlainString() + " W；电源额定 " + rated.toPlainString() + " W，额定功率大于或等于需求才通过。");
+                "整机估算功耗 " + systemPower.stripTrailingZeros().toPlainString() + " W（CPU TDP " + cpu.toPlainString()
+                        + " W + 独显 " + gpu.toPlainString() + " W + 其他配件 80 W）。预留 15% 后，最低需求 "
+                        + required.toPlainString() + " W，当前电源额定 " + rated.toPlainString() + " W。");
     }
 
     private static RuleResult graphicsInterface(Map<HardwareCategory, Part> parts, boolean gpuSelected) {
@@ -106,8 +124,10 @@ public final class CompatibilityRules {
         if (!read.allPresent()) return read.pending("C01");
         if (!read.allUsable()) return read.unknown("C01", "CPU 或主板的插槽缺少已核验值或来源，无法判断。");
         String cpu = read.value(CPU, "socket"), board = read.value(MOTHERBOARD, "socket");
-        if (cpu.equals(board)) return read.result("C01", RuleState.PASS, "CPU 与主板插槽一致：" + cpu + "。");
-        return read.result("C01", RuleState.FAIL, "CPU 插槽为 " + cpu + "，主板插槽为 " + board + "，无法安装。");
+        String cpuLabel = HardwareParameters.socketLabel(cpu);
+        if (cpu.equals(board)) return read.result("C01", RuleState.PASS, "CPU 与主板插槽一致：" + cpuLabel + "。");
+        return read.result("C01", RuleState.FAIL,
+                "CPU 插槽为 " + cpuLabel + "，主板插槽为 " + HardwareParameters.socketLabel(board) + "，无法安装。");
     }
 
     /** C02: the memory generation must be supported and the installed sticks must fit the slots. */
@@ -143,9 +163,11 @@ public final class CompatibilityRules {
         if (!read.allUsable()) return read.unknown("C03", "CPU 插槽或散热器支持清单缺少已核验值或来源，无法判断。");
         String socket = read.value(CPU, "socket");
         List<String> supported = read.values(COOLER, "supportedSockets");
-        if (supported.contains(socket)) return read.result("C03", RuleState.PASS, "散热器支持 " + socket + " 插槽。");
+        String socketLabel = HardwareParameters.socketLabel(socket);
+        if (supported.contains(socket)) return read.result("C03", RuleState.PASS, "散热器支持 " + socketLabel + " 插槽。");
         return read.result("C03", RuleState.FAIL,
-                "CPU 插槽为 " + socket + "，散热器仅支持 " + String.join("、", supported) + "。");
+                "CPU 插槽为 " + socketLabel + "，散热器仅支持 "
+                        + supported.stream().map(HardwareParameters::socketLabel).collect(Collectors.joining("、")) + "。");
     }
 
     /** C04: the case's supported-board set must contain the motherboard form factor. */

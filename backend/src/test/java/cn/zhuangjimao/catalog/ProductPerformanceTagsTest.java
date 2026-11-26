@@ -48,7 +48,7 @@ class ProductPerformanceTagsTest {
             assertThat(tags.size()).isBetween(1,4);
             for (var tag:tags) {
                 assertThat(tag.path("label").asText()).isNotBlank();
-                assertThat(tag.path("kind").asText()).isIn("SCORE","CAPABILITY","UNVERIFIED");
+                assertThat(tag.path("kind").asText()).isIn("SCORE","ESTIMATE","CAPABILITY","UNVERIFIED");
                 if (!tag.path("kind").asText().equals("UNVERIFIED")) assertThat(tag.path("sourceUrl").asText()).startsWith("https://");
             }
             var detail=get("/api/products/"+product.path("id").asLong());
@@ -110,6 +110,10 @@ class ProductPerformanceTagsTest {
             assertThat(invalid.path("performance").path("state").asText()).isEqualTo("INVALID");
             assertThat(invalid.path("performance").path("score").isNull()).isTrue();
             assertThat(invalid.path("performance").path("note").asText()).contains("同一档位");
+            var estimate=invalid.path("product").path("performanceTags").get(0);
+            assertThat(estimate.path("kind").asText()).isEqualTo("ESTIMATE");
+            assertThat(estimate.path("label").asText()).matches("容量估算分 \\d+\\.\\d分");
+            assertThat(estimate.path("note").asText()).contains("同一档位");
             assertThat(data(edited).path("performanceTags")).isEqualTo(invalid.path("product").path("performanceTags"));
             input.put("revision",2); rate.put("value",6000); parameter(parameters,"casLatency").putNull("value");
             assertThat(post(path,input).statusCode()).isEqualTo(200);

@@ -7,10 +7,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.RoundingMode;
 import java.util.*;
+import java.util.regex.Pattern;
 
-/** Presentation labels from current, source-backed parameters and shared scoring rules. */
+/** Public catalog summaries, platform filters and labels from current product data. */
 @Service
 class ProductPerformanceTags {
+    private static final Pattern NVIDIA_GPU = Pattern.compile("\\b(?:GEFORCE|NVIDIA|QUADRO)\\b");
+    private static final Pattern AMD_GPU = Pattern.compile("\\b(?:RADEON|AMD)\\b");
+    private static final Pattern INTEL_GPU = Pattern.compile("\\b(?:ARC|INTEL)\\b");
+    private static final Pattern HEAT_PIPES = Pattern.compile("(?:\\d+|[一二三四五六七八九十]+)热管");
+    private static final Set<String> COOLER_TYPES = Set.of("塔式风冷","单塔风冷","双塔风冷","下压式风冷","风冷散热器");
+    private static final Set<String> PSU_MODULARITY = Set.of("全模组","半模组","非模组","直出线");
+    private static final List<String> CASE_FORM_FACTORS = List.of("E-ATX","ATX","Micro-ATX","Mini-ITX");
     private final ProductMapper products;
     private final PerformanceReferences performance;
     private final ObjectMapper json;
@@ -28,22 +36,126 @@ class ProductPerformanceTags {
             var source=sources.get(product.id());
             JsonNode parameters=source==null || source.parameters()==null ? json.createArrayNode() : json.readTree(source.parameters());
             var reference=source==null || source.referenceData()==null ? null : new PerformanceMapper.Stored(source.referenceData(),source.identityData());
-            result.add(new TaggedProduct(product,labels(product,parameters,performance.evaluate(product,parameters,reference))));
+            Map<String,JsonNode> fields=new HashMap<>();
+            parameters.forEach(field -> fields.put(field.path("code").asText(),field));
+            var platform=platform(product,fields);
+            var displayProduct=withDisplaySummary(product,fields,platform);
+            result.add(new TaggedProduct(displayProduct,labels(product,fields,performance.evaluate(product,parameters,reference)),platform));
         }
         return result;
     }
 
     List<Tag> forProduct(Product product) throws Exception { return decorate(List.of(product)).get(0).performanceTags(); }
 
-    private List<Tag> labels(Product product,JsonNode parameters,PerformanceReferences.Score score) {
-        Map<String,JsonNode> fields=new HashMap<>();
-        parameters.forEach(field -> fields.put(field.path("code").asText(),field));
+    private String platform(Product product,Map<String,JsonNode> fields) {
+        if (product.category().equals("MOTHERBOARD")) {
+            return HardwareParameters.socketPlatform(textValue(fields,"socket",""));
+        }
+        if (!product.category().equals("GPU")) return null;
+        var chipset=known(fields,"gpuChipset");
+        // Legacy GPU products store the chipset family in the model name.
+        String model=(chipset==null ? product.model() : chipset.path("value").asText()).toUpperCase(Locale.ROOT);
+        if (NVIDIA_GPU.matcher(model).find()) return "NVIDIA";
+        if (AMD_GPU.matcher(model).find()) return "AMD";
+        if (INTEL_GPU.matcher(model).find()) return "Intel";
+        return null;
+    }
+
+    private Product withDisplaySummary(Product product,Map<String,JsonNode> fields,String platform) {
+        return switch (product.category()) {
+            case "CPU" -> {
+                String socket=textValue(fields,"socket","插槽待核验");
+                String label=HardwareParameters.socketLabel(socket);
+                yield product.withSummary(label.equals(socket) ? product.brand()+" · "+socket : label);
+            }
+            case "MOTHERBOARD" -> {
+                var field=known(fields,"memorySlots");
+                var slots=field==null ? null : field.path("value");
+                var slotLabel=slots!=null && slots.isIntegralNumber() && slots.canConvertToInt() && slots.intValue()>0
+                        ? slots.intValue()+"个内存插槽" : "内存插槽数待核验";
+                yield product.withSummary(String.join(" · ",platform==null ? "平台待核验" : platform+"平台",
+                        textValue(fields,"formFactor","板型待核验"),slotLabel));
+            }
+            case "COOLER" -> {
+                var tokens=summaryTokens(product);
+                var type=tokens.stream().filter(COOLER_TYPES::contains).findFirst().orElse("");
+                var pipes=tokens.stream().filter(token -> HEAT_PIPES.matcher(token).matches()).findFirst().orElse("");
+                yield summarize(product,type,pipes,summaryNumber(fields,"fanDiameter","mm","","mm风扇"));
+            }
+            case "MEMORY" -> {
+                var speed=summaryNumber(fields,"dataRate","MT/s","","");
+                var timingSpeed=summaryNumber(fields,"timingDataRate","MT/s","","");
+                var latency=speed.isEmpty() || speed.equals(timingSpeed)
+                        ? summaryNumber(fields,"casLatency","周期","CL","") : "";
+                var sticks=summaryNumber(fields,"stickCount","条","","");
+                yield summarize(product,textValue(fields,"generation",""),speed.isEmpty() ? "" : speed+" MT/s",
+                        latency,sticks.isEmpty() ? "" : sticks.equals("1") ? "单根" : sticks+" 根套装");
+            }
+            case "GPU" -> summarize(product,
+                    textValue(fields,"gpuChipset",product.model().replace(" Founders Edition","").replace(" (AMD reference)","")),
+                    summaryNumber(fields,"vram","GB",""," GB"),
+                    summaryNumber(fields,"length","mm",""," mm"));
+            case "SSD" -> {
+                var connection=textValue(fields,"interface","");
+                var generation=textValue(fields,"pcieGeneration","");
+                var lanes=summaryNumber(fields,"lanes",""," ×","");
+                if (connection.equals("PCIe")) connection+=(generation.isEmpty() ? "" : " "+generation)+lanes;
+                var original=known(fields,"originalCapacity");
+                var unit=original==null ? "" : original.path("unit").asText();
+                var capacity=Set.of("GB","TB","GiB","TiB").contains(unit)
+                        ? summaryNumber(fields,"originalCapacity",unit,""," "+unit) : "";
+                if (capacity.isEmpty()) capacity=summaryNumber(fields,"capacity","GB",""," GB");
+                yield summarize(product,textValue(fields,"formFactor",""),connection,capacity);
+            }
+            case "PSU" -> {
+                var modularity=textValue(fields,"cableModularity","");
+                if (modularity.isEmpty()) {
+                    modularity=summaryTokens(product).stream().filter(PSU_MODULARITY::contains).findFirst().orElse("模组待核验");
+                }
+                if (modularity.equals("非模组")) modularity="直出线";
+                yield summarize(product,summaryNumber(fields,"ratedPower","W","","W"),modularity,textValue(fields,"formFactor",""));
+            }
+            case "CASE" -> {
+                var supported=known(fields,"supportedMotherboardFormFactors");
+                var boards=new HashSet<String>();
+                if (supported!=null && supported.path("value").isArray()) {
+                    supported.path("value").forEach(board -> boards.add(board.asText()));
+                }
+                var formFactor=CASE_FORM_FACTORS.stream().filter(boards::contains).findFirst().orElse("");
+                yield summarize(product,formFactor,summaryNumber(fields,"maxGpuLength","mm","显卡限长 "," mm"),
+                        summaryNumber(fields,"maxCoolerHeight","mm","散热器限高 "," mm"));
+            }
+            default -> product;
+        };
+    }
+
+    private List<String> summaryTokens(Product product) {
+        return Arrays.stream(product.summary().split("·")).map(String::strip).toList();
+    }
+
+    private Product summarize(Product product,String... parts) {
+        var summary=String.join(" · ",Arrays.stream(parts).filter(part -> !part.isBlank()).toList());
+        return summary.isEmpty() ? product : product.withSummary(summary);
+    }
+
+    private String summaryNumber(Map<String,JsonNode> fields,String code,String unit,String prefix,String suffix) {
+        var field=known(fields,code);
+        if (field==null || !unit.equals(field.path("unit").asText())) return "";
+        var value=field.path("value");
+        return value.isNumber() && value.decimalValue().signum()>0
+                ? prefix+value.decimalValue().stripTrailingZeros().toPlainString()+suffix : "";
+    }
+
+    private List<Tag> labels(Product product,Map<String,JsonNode> fields,PerformanceReferences.Score score) {
         var tags=new ArrayList<Tag>();
         if (score!=null) {
             boolean capacity=CapacityPerformance.supports(product.category());
             if (score.state().equals("VALID")) tags.add(new Tag("score",(capacity ? "综合评分 " : "渲染参考 ")+score.score().setScale(1,RoundingMode.HALF_UP).toPlainString()+"分",
                     "SCORE",score.reference().path("sourceUrl").asText(),score.note()));
-            else tags.add(new Tag("score",capacity ? "综合评分待核验" : "渲染评分待核验","UNVERIFIED","",score.note()));
+            else {
+                var estimate=CatalogScoreEstimate.tag(product.category(),fields,score.note());
+                tags.add(estimate!=null ? estimate : new Tag("score",capacity ? "综合评分待核验" : "渲染评分待核验","UNVERIFIED","",score.note()));
+            }
         }
         switch (product.category()) {
             case "CPU" -> {
@@ -89,6 +201,13 @@ class ProductPerformanceTags {
         JsonNode field=fields.get(code);
         return field!=null && !field.path("value").isNull() && !field.path("value").isMissingNode() && HardwareParameters.httpUrl(field.path("sourceUrl").asText()) ? field : null;
     }
+
+    private String textValue(Map<String,JsonNode> fields,String code,String fallback) {
+        var field=known(fields,code);
+        if (field==null) return fallback;
+        var value=field.path("value").textValue();
+        return value==null || value.isBlank() ? fallback : value;
+    }
     private void number(List<Tag> tags,Map<String,JsonNode> fields,String code,String prefix,String suffix,String unit,String note) {
         var field=known(fields,code);
         if (field==null || !field.path("value").isNumber() || field.path("value").decimalValue().signum()<=0 || !field.path("unit").asText().equals(unit)) return;
@@ -117,5 +236,5 @@ class ProductPerformanceTags {
         tags.add(new Tag(code,label,"CAPABILITY",field.path("sourceUrl").asText(),note+(sourceNote.isBlank() ? "" : " "+sourceNote)));
     }
     record Tag(String code,String label,String kind,String sourceUrl,String note) {}
-    record TaggedProduct(@JsonUnwrapped Product product,List<Tag> performanceTags) {}
+    record TaggedProduct(@JsonUnwrapped Product product,List<Tag> performanceTags,String platform) {}
 }

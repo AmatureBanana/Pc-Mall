@@ -52,6 +52,24 @@ public final class PerformanceScores {
                 .add(weighted(clamp(ratio(write,6000)),"0.45")));
     }
 
+    static BigDecimal capacityEstimate(BigDecimal capacity, boolean memory) {
+        int[] tiers = memory ? MEMORY_TIERS : SSD_TIERS;
+        BigDecimal lower = BigDecimal.ZERO;
+        BigDecimal ceiling = BigDecimal.valueOf(tiers[tiers.length-1]);
+        BigDecimal bounded = capacity.min(ceiling);
+        for (int i = 0; i < tiers.length; i++) {
+            BigDecimal upper = BigDecimal.valueOf(tiers[i]);
+            if (bounded.compareTo(upper) <= 0) {
+                BigDecimal fraction = bounded.subtract(lower).divide(upper.subtract(lower),MathContext.DECIMAL128);
+                BigDecimal rank = BigDecimal.valueOf(i).subtract(BigDecimal.ONE).add(fraction);
+                return rank.add(weighted(CAPACITY_GUARD,"0.5")).max(BigDecimal.ZERO).multiply(HUNDRED)
+                        .divide(BigDecimal.valueOf(tiers.length-1).add(CAPACITY_GUARD),6,RoundingMode.HALF_UP);
+            }
+            lower = upper;
+        }
+        throw new IllegalStateException("容量超出评分档位");
+    }
+
     private static CapacityRating capacityRating(BigDecimal capacity, int[] tiers, BigDecimal subscore) {
         if (!positive(capacity)) return null;
         for (int rank = 0; rank < tiers.length; rank++) {

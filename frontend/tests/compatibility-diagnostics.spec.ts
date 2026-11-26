@@ -34,7 +34,7 @@ test('core admission shows only a summary without rule rows or conflict points',
   await expect(page.getByRole('region', { name: '配置修订建议' })).not.toContainText('核心通过不代表可售、有库存或全面兼容')
   await expect(page.getByRole('button', { name: /加入购物车|立即购买/ })).toHaveCount(0)
   await page.getByText('检测记录', { exact: true }).click()
-  await expect(page.getByLabel('检测记录')).toContainText('f03-core-graphics-choice-v3')
+  await expect(page.getByLabel('检测记录')).toContainText('f03-core-tdp-power-v4')
   await page.screenshot({ path: '../docs/evidence/task-11-admission.png', fullPage: true, animations: 'disabled' })
 })
 
@@ -288,4 +288,62 @@ test('configuration edits automatically update conflicts without a manual rechec
   await expect(diagnostics(page)).not.toContainText('核心检测通过')
   await expect(conflicts(page)).toHaveCount(0)
   await advice.screenshot({ path: '../docs/evidence/diy-auto-compatibility.png', animations: 'disabled' })
+})
+
+test('category colors persist until the current compatibility check resolves them', async ({ page }) => {
+  let holdCheck = false
+  let reportStarted!: () => void
+  let releaseCheck!: () => void
+  const started = new Promise<void>(resolve => { reportStarted = resolve })
+  const pending = new Promise<void>(resolve => { releaseCheck = resolve })
+  await page.route('**/api/compatibility/check', async route => {
+    const response = await route.fetch()
+    const body = await response.json()
+    const memoryRule = body.data.checks.find((rule: { rule: string }) => rule.rule === 'C02')
+    if (memoryRule.state === 'PASS') {
+      memoryRule.state = 'UNKNOWN'
+      memoryRule.message = '内存参数待核实。'
+    }
+    if (holdCheck) {
+      reportStarted()
+      await pending
+    }
+    await route.fulfill({ response, json: body })
+  })
+
+  await page.goto('/#diy')
+  const categories = page.getByRole('navigation', { name: 'DIY 硬件分类' })
+  const row = (name: string) => categories.getByRole('group', { name: name + '配置', exact: true })
+  const pick = (name: string) => page.getByRole('button', { name: '选择 ' + name, exact: true }).click()
+  await pick('AMD Ryzen 7 7800X3D')
+  await categories.getByRole('button', { name: /^主板 / }).click()
+  await pick('华硕 TUF B760M-PLUS WIFI')
+  await categories.getByRole('button', { name: /^内存 / }).click()
+  await pick('金士顿 FURY Beast 16GB')
+
+  await expect(row('CPU')).toHaveAttribute('data-compatibility', 'conflict')
+  await expect(row('主板')).toHaveAttribute('data-compatibility', 'conflict')
+  await expect(row('CPU')).toHaveCSS('background-color', 'rgb(255, 224, 227)')
+  await expect(row('内存')).toHaveAttribute('data-compatibility', 'unknown')
+  await expect(row('内存')).toHaveCSS('background-color', 'rgb(255, 241, 186)')
+  await expect(row('电源')).not.toHaveAttribute('data-compatibility', /.+/)
+
+  await categories.getByRole('button', { name: /^CPU / }).click()
+  holdCheck = true
+  try {
+    await pick('Intel Core i5-14600K')
+    await started
+    await expect(row('CPU')).toHaveAttribute('data-compatibility', 'conflict')
+    await expect(row('主板')).toHaveAttribute('data-compatibility', 'conflict')
+  } finally {
+    releaseCheck()
+  }
+  await expect(row('CPU')).not.toHaveAttribute('data-compatibility', /.+/)
+  await expect(row('主板')).toHaveAttribute('data-compatibility', 'unknown')
+
+  await page.unrouteAll({ behavior: 'wait' })
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(row('主板')).not.toHaveAttribute('data-compatibility', /.+/)
+  await expect(row('内存')).not.toHaveAttribute('data-compatibility', /.+/)
+  await expect(row('内存')).toHaveCSS('background-color', 'rgb(234, 241, 255)')
 })

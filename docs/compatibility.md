@@ -19,7 +19,7 @@
 ```json
 {
   "revision": 3,
-  "ruleVersion": "f03-core-graphics-choice-v3",
+  "ruleVersion": "f03-core-tdp-power-v4",
   "checkedAt": "2026-11-08T03:00:00Z",
   "catalogVersion": "<64位SHA-256参数快照指纹>",
   "status": "CORE_PASSED",
@@ -48,7 +48,7 @@
 | C04 | 主板 `formFactor` 属于机箱 `supportedMotherboardFormFactors` |
 | C05 | SSD `formFactor`/`interface`/`protocol` 同时匹配一个主板 `ssdSlots` 有效安装组合，禁止拼接不同插槽能力 |
 | C06 | 独显 `installationInterface` 属于主板 `gpuInterfaces`；PCIe 代际差异不自动失败 |
-| C08 | PSU `ratedPower` ≥ `ceil(1.30 × (CPU peakPowerEstimate + GPU boardPowerEstimate + 80))`，无独显 GPU 项为0；使用精确十进制，禁止以 TDP 替代峰值 |
+| C08 | PSU `ratedPower` ≥ `ceil(1.15 × (CPU tdp + GPU boardPowerEstimate + 80))`。主板、硬盘、内存等其他配件统一估算 80 W，核显不单独加计。按精确十进制计算，最低需求向上取整。额定功率达到最低需求即通过此项 |
 | C09 | GPU `length` ≤ CASE `maxGpuLength` |
 | C10 | COOLER `height` ≤ CASE `maxCoolerHeight` |
 
@@ -85,7 +85,7 @@ DIY 选择变化自动检测、刷新价格与库存、窗口激活、页面重�
 无需迁移：读取 V4/V10/V15 已有参数，未修改历史迁移、未知 AMD 峰值或厂商事实。没有新增依赖、外部代码或数据。验证记录见[任务11证据](evidence/task-11.md)，审查见[两轴审查](evidence/task-11-review.md)。
 
 
-2026-11-08 用户后续调整的验证见[取消图形输出与显卡完整性判断](evidence/graphics-rule-removed.md)。此前任务11证据保留为历史实现记录，以当前版本 `f03-core-graphics-choice-v3` 为准。
+2026-11-08 用户后续调整的验证见[取消图形输出与显卡完整性判断](evidence/graphics-rule-removed.md)。此前任务11证据保留为历史实现记录，当前版本为 `f03-core-tdp-power-v4`。
 
 
 2026-11-08 页面进一步精简：配置修订建议不再显示「配置或参数变化后需重检」及手动「重新检测」按钮。所有配置变更自动检测现有硬件冲突，失败后的重试入口保留；显卡必选及九项规则保持不变。

@@ -46,7 +46,7 @@ class RecommendationService {
 
         boolean missingData = false;
         boolean unknownOfficeGraphics = false;
-        for (var product : products.findOnSale(null, "")) {
+        for (var product : products.findOnSale(null, "", null)) {
             if (product.stock() < 1) continue;
             var category = HardwareCategory.valueOf(product.category());
             lowestStockedPrices.merge(category, product.price(), BigDecimal::min);

@@ -39,7 +39,7 @@ $env:MAVEN_USER_HOME = "$PWD\.local\maven-user"
 ./scripts/local-db.ps1 stop
 ```
 
-Flyway 在应用启动时校验并执行版本化 SQL。默认演示配置使用 V1～V36，空库初始有八类共 500 件在售商品。`test` 配置仅加载 V1～V31，常规回归使用 13 件基础在售商品。重复启动会校验已执行的迁移，后续数据变更通过新增迁移交付。 [迁移和目录版本](docs/delivery.md#数据与迁移) · [分类参数契约](docs/catalog-parameters.md)
+Flyway 在应用启动时校验并执行版本化 SQL。默认演示配置使用 V1～V44，空库初始有八类共 574 件在售商品，其中 CPU 散热器、电源和机箱各 50 件。`test` 配置加载 V1～V31 和 V37，常规回归使用 13 件基础在售商品。重复启动会校验已执行的迁移，后续数据变更通过新增迁移交付。 [迁移和目录版本](docs/delivery.md#数据与迁移) · [分类参数契约](docs/catalog-parameters.md)
 
 ## 开发启动
 

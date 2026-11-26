@@ -13,7 +13,7 @@ import OrderPanel from './OrderPanel.vue'
 import OrderHistory from './OrderHistory.vue'
 import UserCenter from './UserCenter.vue'
 import ProfilePanel from './ProfilePanel.vue'
-import { categories, formatPrice, imageFallback, loadProducts, type Category } from './catalog'
+import { categories, formatPrice, imageFallback, loadProducts, motherboardPlatform, type Category } from './catalog'
 import { useCatalogRequest } from './useCatalogRequest'
 import { signedIn } from './auth'
 import { useCart } from './cart'
@@ -46,6 +46,7 @@ const accountSection = computed(() => ordersOpen.value || orderNumber.value ? 'o
 const { data, status, error, refresh } = useCatalogRequest(
   signal => loadProducts(signal, selectedCategory.value, keyword.value), '商品')
 const products = computed(() => data.value ?? [])
+const showSummaryCategory = (category: Category) => category === 'CPU' || category === 'MOTHERBOARD'
 const visibleProducts = computed(() => {
   const items = products.value.filter(product =>
     Number(product.price) >= priceRange.value.min && Number(product.price) <= priceRange.value.max)
@@ -135,7 +136,7 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
         <div v-if="status === 'loading'" class="product-grid skeleton-grid" aria-label="正在加载商品"><div v-for="n in 8" :key="n" class="product-card skeleton-card"><ElSkeleton animated :rows="4"/></div></div>
         <div v-else-if="status === 'error'" class="state-panel error-panel" role="alert"><div class="state-icon"><HardwareIcon name="alert"/></div><h1>商品加载失败</h1><p>{{ error }}</p><ElButton type="primary" @click="refresh">重新加载</ElButton></div>
         <div v-else-if="visibleProducts.length === 0" class="state-panel"><ElEmpty description="没有找到符合条件的商品"><ElButton type="primary" @click="resetFilters">清除筛选</ElButton></ElEmpty></div>
-        <div v-else class="product-grid"><article v-for="product in visibleProducts" :key="product.id" class="product-card"><div class="product-image"><a :href="`#product/${product.id}`" tabindex="-1" aria-hidden="true"><img :src="product.imageUrl" :alt="`${product.categoryLabel}品类示意图`" @error="imageFallback"/></a><span class="illustration-label">品类示意</span></div><div class="product-info"><h2 :title="product.name"><a :href="`#product/${product.id}`">{{ product.name }}</a></h2><p class="product-meta"><span>{{ product.categoryLabel }}</span><span class="meta-dot">·</span>{{ product.summary }}</p><ProductPerformanceTags :tags="product.performanceTags" compact/><div class="product-bottom"><span class="product-price"><span class="currency-symbol">¥</span> {{ formatPrice(product.price) }}</span><span class="stock" :class="{ unavailable: product.stock === 0 }">{{ product.stock === 0 ? '暂时缺货' : `库存 ${product.stock} 件` }}</span></div></div></article></div>
+        <div v-else class="product-grid"><article v-for="product in visibleProducts" :key="product.id" class="product-card"><div class="product-image"><a :data-motherboard-platform="motherboardPlatform(product)" :href="`#product/${product.id}`" tabindex="-1" aria-hidden="true"><img :src="product.imageUrl" :alt="`${product.categoryLabel}品类示意图`" @error="imageFallback"/></a><span class="illustration-label">品类示意</span></div><div class="product-info"><h2 :title="product.name"><a :href="`#product/${product.id}`">{{ product.name }}</a></h2><p class="product-meta" :class="{ 'product-meta--specs': !showSummaryCategory(product.category) }"><template v-if="showSummaryCategory(product.category)"><span>{{ product.categoryLabel }}</span><span class="meta-dot">·</span></template>{{ product.summary }}</p><ProductPerformanceTags :tags="product.performanceTags" compact/><div class="product-bottom"><span class="product-price"><span class="currency-symbol">¥</span> {{ formatPrice(product.price) }}</span><span class="stock" :class="{ unavailable: product.stock === 0 }">{{ product.stock === 0 ? '暂时缺货' : `库存 ${product.stock} 件` }}</span></div></div></article></div>
         <p v-if="status === 'ready'" class="catalog-note">价格与库存仅供本机演示，非实时市场报价。<button @click="showDataNote = !showDataNote" :aria-expanded="showDataNote">{{ showDataNote ? '收起数据说明' : '查看数据说明' }} ↗</button></p>
         <div v-if="showDataNote" class="data-note"><h2>关于演示数据</h2><p>商品型号来自公开资料。图片为本站绘制的品类示意图。价格和库存采用本地演示数据。</p><ul><li v-for="product in products" :key="product.id"><a :href="product.sourceUrl" target="_blank" rel="noopener noreferrer">{{ product.name }} · 型号资料</a></li></ul></div>
       </section>

@@ -1,6 +1,7 @@
 package cn.zhuangjimao.catalog;
 
 import java.util.List;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,7 +29,10 @@ class ProductCatalog {
         if (keyword.length() > 100) {
             throw new CatalogException(HttpStatus.BAD_REQUEST, "INVALID_QUERY", "搜索关键词不能超过 100 个字符。");
         }
-        return tags.decorate(products.findOnSale(category == null ? null : category.name(), keyword.strip()));
+        String term = keyword.strip();
+        return tags.decorate(products.findOnSale(category == null ? null : category.name(),
+                CatalogBrandNames.normalizeManufacturerSpacing(term),
+                CatalogBrandNames.manufacturerKeyword(term))).stream().map(this::localized).toList();
     }
 
     @Transactional(readOnly = true)
@@ -48,11 +52,26 @@ class ProductCatalog {
             throw new CatalogException(HttpStatus.SERVICE_UNAVAILABLE, "PRODUCT_DATA_UNAVAILABLE", "商品参数暂时不可用，请稍后重试。");
         }
         List<Parameter> parameters = json.readValue(specification.parameters(), new TypeReference<>() {});
-        try { return new Detail(tags.decorate(List.of(product)).get(0), specification.description(), parameters, specification.dataVersion(),performance.read(id)); }
+        try { return new Detail(localized(tags.decorate(List.of(product)).get(0)),
+                CatalogBrandNames.localizedDescription(product, specification.description()), parameters,
+                specification.dataVersion(), performance.read(id)); }
         catch (JsonProcessingException e) { throw e; }
         catch (Exception e) { throw new IllegalStateException("性能参考无法读取",e); }
     }
 
+    private ProductPerformanceTags.TaggedProduct localized(ProductPerformanceTags.TaggedProduct item) {
+        return new ProductPerformanceTags.TaggedProduct(CatalogBrandNames.localized(item.product()),
+                item.performanceTags(), item.platform());
+    }
+
     record Parameter(String code, String label, JsonNode value, String unit, String sourceUrl, String note) {}
-    record Detail(ProductPerformanceTags.TaggedProduct product, String description, List<Parameter> parameters, String dataVersion, PerformanceReferences.Score performance) {}
+    record Detail(ProductPerformanceTags.TaggedProduct product, String description, List<Parameter> parameters, String dataVersion, PerformanceReferences.Score performance) {
+        @JsonProperty
+        public String socketLabel() {
+            return parameters.stream()
+                    .filter(parameter -> "socket".equals(parameter.code()) && parameter.value() != null && parameter.value().isTextual())
+                    .map(parameter -> HardwareParameters.socketLabel(parameter.value().textValue()))
+                    .findFirst().orElse(null);
+        }
+    }
 }

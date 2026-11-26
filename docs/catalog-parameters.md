@@ -8,7 +8,7 @@
 
 | 商品 / 厂商来源 | 逐字段核验结果（参数 code → 值） |
 | --- | --- |
-| [Intel i5-14600KF](https://www.intel.com/content/www/us/en/products/sku/236778/intel-core-i5-processor-14600kf-24m-cache-up-to-5-30-ghz/specifications.html) | socket=LGA1700（由 FCLGA1700 规范化）；cores=14；threads=20；basePower=125 W；peakPowerEstimate=181 W，使用 Maximum Turbo Power；memoryGenerations=[DDR4, DDR5] |
+| [Intel i5-14600KF](https://www.intel.com/content/www/us/en/products/sku/236778/intel-core-i5-processor-14600kf-24m-cache-up-to-5-30-ghz/specifications.html) | socket=LGA1700（由 FCLGA1700 规范化）；cores=14；threads=20；basePower=125 W；V37 使用同一官方基础功耗补录 tdp=125 W；peakPowerEstimate=181 W，使用 Maximum Turbo Power；memoryGenerations=[DDR4, DDR5] |
 | [Intel 无核显清单](https://www.intel.com/content/www/us/en/support/articles/000027144/processors/intel-core-processors.html) | i5-14600KF integratedGraphics=false |
 | [AMD Ryzen 7 7800X3D](https://www.amd.com/en/products/processors/desktops/ryzen/7000-series/amd-ryzen-7-7800x3d.html)；[原作者PPT记录](https://skatterbencher.com/2023/04/05/skatterbencher-60-amd-ryzen-7-7800x3d-overclocked-to-5400-mhz/) | socket=AM5；cores=8；threads=16；integratedGraphics=true；tdp=120 W；memoryGenerations=[DDR5]。V4曾因AMD产品页只给TDP而保留peakPowerEstimate=null；V26补为162 W，依据型号级默认PPT限额作保守估算，不把TDP当峰值，也不覆盖提高功率限制/手动超频场景 |
 | [ASUS TUF GAMING B760M-PLUS WIFI 技术规格](https://www.asus.com/us/motherboards-components/motherboards/tuf-gaming/tuf-gaming-b760m-plus-wifi/techspec/) | socket=LGA1700；formFactor=Micro-ATX；memoryGenerations=[DDR5]；memorySlots=4；displayOutputs=[HDMI, DisplayPort]；gpuInterfaces=[PCIe x16]（物理安装规格）；ssdFormFactors=[M.2 2242, M.2 2260, M.2 2280]；ssdInterfaces=[PCIe]；ssdProtocols=[NVMe]；m2Slots=2。不是 D4 版本 |
@@ -25,7 +25,7 @@
 
 SSD 按十进制 GB，1 TB=1000 GB；原始 TB 数值另存，不混用 GiB/TiB。内存采用厂商标称 GB；功率用 W，长度用 mm，数据速率用 MT/s。板型将 mATX/M-ATX 统一为 Micro-ATX。主板 SSD 三个支持集合仅描述两个 M.2 插槽，且当前都是 PCIe/NVMe 的对应组合；不描述 SATA 端口，后续增加不同插槽组合时应逐插槽建模，不能将无关集合任意做笛卡尔积。主板视频输出仍需有效 CPU 核显，不能只因存在 HDMI 端口就判定核显路径成立。
 
-当前 C01～C06、C08～C10 对应数据为：socket；generation/stickCount/memorySlots；supportedSockets；formFactor/supportedMotherboardFormFactors；SSD 规格/接口/协议；显卡安装接口；峰值与总板功耗估算/额定功率；显卡长度/机箱有效限长；散热器高度/机箱有效限高。AMD 峰值未知应由后续数据准备核验后补充，规则在此前应给 UNKNOWN；本任务不宣称任一整机已通过核心检查。
+当前 C01～C06、C08～C10 对应数据为：socket；generation/stickCount/memorySlots；supportedSockets；formFactor/supportedMotherboardFormFactors；SSD 规格/接口/协议；显卡安装接口；CPU TDP、独显整卡功耗及电源额定功率；显卡长度/机箱有效限长；散热器高度/机箱有效限高。C08 所需字段缺少有效值或来源时结果为 UNKNOWN。
 
 以上为按型号逐项整理的事实数据和本项目原创描述，没有复制厂商图片、长篇文案、外部商品数据库或第三方业务代码。厂商资料保留其原有权利，仅以链接归因，不主张其为开放许可；未采用 pc-builder-parts 数据，因而不引入其 CC BY 4.0 数据包。原有 12 个品类图仍为项目原创 SVG。所有售价、库存仍是数据库中的 CNY 演示值。
 

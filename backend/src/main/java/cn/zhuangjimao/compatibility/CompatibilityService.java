@@ -26,7 +26,7 @@ import java.util.Set;
  */
 @Service
 public class CompatibilityService {
-    static final String RULE_VERSION = "f03-core-graphics-choice-v3";
+    static final String RULE_VERSION = "f03-core-tdp-power-v4";
 
     private static final List<CompatibilityResult.Unexecuted> EXTENSIONS =
             List.of("E01", "E02", "E03", "E04", "E05", "E06").stream()

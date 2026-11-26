@@ -17,7 +17,11 @@ export interface ProductIdentity {
   brand: string; model: string; summary: string; imageUrl: string; price: string; stock: number
   sourceUrl: string; priceNote: string; revision: number
 }
-export interface Product extends ProductIdentity { performanceTags: PerformanceTag[] }
+export type ProductPlatform = 'AMD' | 'Intel' | 'NVIDIA'
+export interface Product extends ProductIdentity { performanceTags: PerformanceTag[]; platform?: ProductPlatform }
+export function motherboardPlatform(product: Product): 'Intel' | 'AMD' | undefined {
+  if (product.category === 'MOTHERBOARD' && (product.platform === 'Intel' || product.platform === 'AMD')) return product.platform
+}
 export interface ProductSlot { formFactor: string; interface: string; protocol: string }
 export interface ProductParameter {
   code: string; label: string; value: string | number | boolean | string[] | ProductSlot[] | null
@@ -25,6 +29,7 @@ export interface ProductParameter {
 }
 export interface ProductDetail {
   product: Product; description: string; parameters: ProductParameter[]; dataVersion: string
+  socketLabel?: string
   performance?: import('./performance').PerformanceScore
 }
 export function isProductIdentity(value: unknown): value is ProductIdentity {
@@ -41,6 +46,7 @@ export function isProductIdentity(value: unknown): value is ProductIdentity {
 function isProduct(value: unknown): value is Product {
   return isProductIdentity(value) && 'performanceTags' in value && Array.isArray(value.performanceTags)
     && value.performanceTags.length > 0 && value.performanceTags.every(isPerformanceTag)
+    && (!('platform' in value) || value.platform === 'AMD' || value.platform === 'Intel' || value.platform === 'NVIDIA')
 }
 export async function loadProducts(signal: AbortSignal, category: Category = 'ALL', keyword = ''): Promise<Product[]> {
   const query = new URLSearchParams()
@@ -99,6 +105,7 @@ export async function loadProduct(id: string, signal: AbortSignal): Promise<Prod
       || typeof detail.description !== 'string' || !detail.description
       || typeof detail.dataVersion !== 'string' || !detail.dataVersion
       || !Array.isArray(detail.parameters) || !detail.parameters.length || !detail.parameters.every(isParameter)
+      || detail.socketLabel !== undefined && typeof detail.socketLabel !== 'string'
       || detail.performance !== undefined && !isPerformance(detail.performance)) {
     throw new Error('商品详情数据格式异常，请稍后重试。')
   }

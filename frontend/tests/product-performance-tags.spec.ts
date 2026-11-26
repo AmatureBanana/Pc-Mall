@@ -1,6 +1,29 @@
 import { expect, test } from '@playwright/test'
 import type { Product } from '../src/catalog'
 
+test('CPU details distinguish Blender rendering and sourced Geekbench scores', async ({ page }) => {
+  const products: { data: Product[] } = await (await page.request.get('/api/products')).json()
+  const cpu = products.data.find(product => product.sku === 'INTEL-I5-14600K')!
+  await page.goto(`/#product/${cpu.id}`)
+  const scores = page.getByRole('region', { name: '性能参考' })
+  await expect(scores).toContainText('Blender 渲染参考分')
+  await expect(scores).toContainText('Geekbench 7 单核')
+  await expect(scores).toContainText('2512 分')
+  await expect(scores).toContainText('Geekbench 7 多核')
+  await expect(scores).toContainText('17129 分')
+  await expect(scores.getByRole('link', { name: 'Geekbench 7 单核来源' })).toHaveAttribute('href', /browser\.geekbench\.com/)
+
+  await page.route(`**/api/products/${cpu.id}`, async route => {
+    const response = await route.fetch()
+    const body = await response.json()
+    body.data.parameters = body.data.parameters.filter((parameter: { code: string }) => !parameter.code.startsWith('geekbench7'))
+    await route.fulfill({ response, json: body })
+  })
+  await page.reload()
+  await expect(scores).toContainText('Blender 渲染参考分')
+  await expect(scores.getByText('暂无已核验成绩')).toHaveCount(2)
+})
+
 test('storefront cards round score labels returned with two decimal places', async ({ page }) => {
   await page.route('**/api/products', async route => {
     const response = await route.fetch()

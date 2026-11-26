@@ -39,7 +39,7 @@ class CompatibilityCheckTest {
     void ryzen7800x3dIntegratedBuildHasVerifiedPowerAndCanPassCoreChecks() throws Exception {
         JsonNode minimal = json.readTree(check("{\"revision\":1,\"CPU\":2,\"PSU\":11}").body()).path("data");
         assertThat(rule(minimal, "C08").path("state").asText()).isEqualTo("PASS");
-        assertThat(rule(minimal, "C08").path("message").asText()).contains("315 W");
+        assertThat(rule(minimal, "C08").path("message").asText()).contains("230 W");
         long memory = db.queryForObject("SELECT id FROM products WHERE sku='KINGSTON-KF560C36BBE2-16'", Long.class);
         String config = COMPLETE.replace("\"GPU\":5,", "\"integratedGraphicsCpuId\":2,")
                 .replace("\"CPU\":1", "\"CPU\":2").replace("\"MOTHERBOARD\":3", "\"MOTHERBOARD\":4")
@@ -77,12 +77,12 @@ class CompatibilityCheckTest {
         long psu = cloneProduct(11), box = cloneProduct(12);
         try {
             String config = COMPLETE.replace("\"PSU\":11", "\"PSU\":" + psu).replace("\"CASE\":12", "\"CASE\":" + box);
-            setParameter(psu, "ratedPower", json.getNodeFactory().numberNode(626));
+            setParameter(psu, "ratedPower", json.getNodeFactory().numberNode(489));
             setParameter(box, "maxGpuLength", json.getNodeFactory().numberNode(244));
             setParameter(box, "maxCoolerHeight", json.getNodeFactory().numberNode(155));
             JsonNode pass = json.readTree(check(config).body()).path("data");
             assertThat(pass.path("status").asText()).isEqualTo("CORE_PASSED");
-            setParameter(psu, "ratedPower", json.getNodeFactory().numberNode(625));
+            setParameter(psu, "ratedPower", json.getNodeFactory().numberNode(488));
             setParameter(box, "maxGpuLength", json.getNodeFactory().numberNode(243.99));
             setParameter(box, "maxCoolerHeight", json.getNodeFactory().numberNode(154.99));
             JsonNode fail = json.readTree(check(config).body()).path("data");
@@ -136,7 +136,7 @@ class CompatibilityCheckTest {
         try {
             String config = COMPLETE.replace("\"CPU\":1", "\"CPU\":" + cpu);
             JsonNode before = json.readTree(check(config).body()).path("data");
-            setParameter(cpu, "peakPowerEstimate", json.nullNode());
+            setParameter(cpu, "tdp", json.nullNode());
             JsonNode after = json.readTree(check(config).body()).path("data");
             assertThat(after.path("status").asText()).isEqualTo("UNVERIFIED");
             assertThat(after.path("corePassed").asBoolean()).isFalse();

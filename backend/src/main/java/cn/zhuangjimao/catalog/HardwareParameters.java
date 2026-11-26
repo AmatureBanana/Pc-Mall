@@ -16,6 +16,17 @@ public final class HardwareParameters {
     private static final List<String> BOARDS = List.of("ATX","Micro-ATX","Mini-ITX","E-ATX");
     private static final List<String> OUTPUTS = List.of("HDMI","DisplayPort","DVI","VGA","USB-C");
     private static final List<String> SSD_FORMS = List.of("M.2 2230","M.2 2242","M.2 2260","M.2 2280","M.2 22110","2.5-inch","U.2","PCIe card");
+    static String socketPlatform(String socket) {
+        return switch (socket) {
+            case "AM4","AM5","sTR5","sTRX4" -> "AMD";
+            case "LGA1851","LGA1700","LGA1200","LGA1151","LGA1150","LGA1155" -> "Intel";
+            default -> null;
+        };
+    }
+    public static String socketLabel(String socket) {
+        String platform=socketPlatform(socket);
+        return platform==null ? socket : platform+" · "+socket;
+    }
     private static Field field(String code,String label,String type,String unit,boolean required,List<String> options) {
         return new Field(code,label,type,unit,required,options);
     }
@@ -31,8 +42,8 @@ public final class HardwareParameters {
                     number("igpuFrequency","核显图形频率","MHz",false),number("igpuBaseFrequency","核显基础频率","MHz",false),number("igpuMaxFrequency","核显最大频率","MHz",false),
                     text("igpuOutputInterfaces","核显显示接口"),text("igpuMaxResolutionHdmi","核显 HDMI 最大分辨率"),
                     text("igpuMaxResolutionDisplayPort","核显 DisplayPort 最大分辨率"),text("igpuMaxResolutionEdp","核显 eDP 最大分辨率"),integer("igpuMaxDisplays","核显最大显示器数","台",false),
-                    number("peakPowerEstimate","峰值功耗估算","W",true), set("memoryGenerations","支持内存代际",false,DDR),
-                    integer("cores","核心数","核",false),integer("threads","线程数","线程",false),number("basePower","基础功耗","W",false),number("tdp","TDP","W",false),
+                    number("peakPowerEstimate","峰值功耗估算","W",false), set("memoryGenerations","支持内存代际",false,DDR),
+                    integer("cores","核心数","核",false),integer("threads","线程数","线程",false),number("basePower","基础功耗","W",false),number("tdp","TDP","W",true),
                     integer("geekbench7SingleCore","Geekbench 7 单核","分",false),integer("geekbench7MultiCore","Geekbench 7 多核","分",false));
             case MOTHERBOARD -> List.of(choice("socket","CPU 插槽",true,SOCKETS),choice("formFactor","主板板型",true,BOARDS),
                     set("memoryGenerations","支持内存代际",true,DDR),integer("memorySlots","内存插槽数","个",true),
@@ -51,7 +62,9 @@ public final class HardwareParameters {
                     choice("formFactor","物理规格",true,SSD_FORMS),choice("interface","连接接口",true,List.of("PCIe","SATA")),choice("protocol","协议",true,List.of("NVMe","AHCI")),
                     text("pcieGeneration","PCIe 代际"),integer("lanes","PCIe 通道数","",false),
                     number("sequentialRead","标称顺序读取","MB/s",false),number("sequentialWrite","标称顺序写入","MB/s",false));
-            case PSU -> List.of(number("ratedPower","有效额定功率","W",true),text("manufacturerPartNumber","厂商型号"),choice("formFactor","电源板型",false,List.of("ATX","SFX","SFX-L","TFX")),text("atxVersion","ATX 版本"),number("length","电源长度","mm",false));
+            case PSU -> List.of(number("ratedPower","有效额定功率","W",true),text("manufacturerPartNumber","厂商型号"),
+                    choice("cableModularity","模组类型",false,List.of("全模组","半模组","直出线")),
+                    choice("formFactor","电源板型",false,List.of("ATX","SFX","SFX-L","TFX")),text("atxVersion","ATX 版本"),number("length","电源长度","mm",false));
             case CASE -> List.of(set("supportedMotherboardFormFactors","支持主板板型",true,BOARDS),number("maxGpuLength","默认安装显卡限长","mm",true),
                     number("maxCoolerHeight","默认安装散热器限高","mm",true),number("maxPsuLength","电源限长","mm",false));
             case COOLER -> List.of(set("supportedSockets","支持 CPU 插槽",true,SOCKETS),number("height","散热器完整高度","mm",true),number("fanDiameter","风扇直径","mm",false));

@@ -45,11 +45,11 @@ Maven Wrapper 固定 3.9.11。`pom.xml` 固定 Spring Boot 3.5.16 与 MyBatis St
 
 | 用途 | 版本与初始内容 |
 | --- | --- |
-| 演示 | `db/migration` 的 V1～V31 加 `db/catalog` 的 V32～V36。基础目录、扩展 SKU、渲染参考分及厂商参数补录均随 JAR 安装。空库初始 500 件在售和 1 件下架，覆盖八个分类 |
-| 常规回归 | `test` profile 仅加载 V1～V31。基础在售商品 13 件，测试用失效样本和新交易按用例创建 |
+| 演示 | `db/migration` 的 V1～V31、V37 加 `db/catalog` 的 V32～V36、V38～V44。基础目录、扩展 SKU、渲染与 Geekbench 参考分、厂商参数及大陆渠道筛选均随 JAR 安装。V43 下架仅有估算分的商品，V44 补录电源模组类型。空库初始有八类共 574 件在售商品 |
+| 常规回归 | `test` profile 加载 V1～V31 和 V37。基础在售商品 13 件，测试用失效样本和新交易按用例创建 |
 | 性能负载 | `performance-acceptance-v1` 在常规基础上临时加入 112 个可追溯型号，共 125 件。负载结束清理本轮样本 |
 
-各目录的售价与库存为本地 CNY 演示值。扩展目录的部分 SKU 缺评分、核验参数或可售库存，使用前台状态和当前 F03 结果判断能否装机。兼容检查使用 `f03-core-graphics-choice-v3`，显卡栏须明确选择绑定 CPU 的核显或独显。 [扩展目录和来源](catalog-expansion.md) · [性能数据](performance-data.md) · [兼容规则](compatibility.md) · [125 件负载数据](evidence/task-24.md)
+各目录的售价与库存为本地 CNY 演示值。扩展目录的部分 SKU 缺评分、核验参数或可售库存，使用前台状态和当前 F03 结果判断能否装机。兼容检查使用 `f03-core-tdp-power-v4`，显卡栏须明确选择绑定 CPU 的核显或独显，电源最低需求按 CPU TDP、独显整卡功耗与其他配件的估算功耗计算。 [扩展目录和来源](catalog-expansion.md) · [性能数据](performance-data.md) · [兼容规则](compatibility.md) · [125 件负载数据](evidence/task-24.md)
 
 ## 五条演示路径
 

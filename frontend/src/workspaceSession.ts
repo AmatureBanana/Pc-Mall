@@ -25,11 +25,11 @@ export const seenBaseline = ref<SeenSnapshot | null | undefined>(undefined)
 const signInKey = 'pc-mall.diy.sign-in.v1'
 
 /** Only navigation and diagnostic data; storage failure leaves the in-memory flow usable. */
-export function beginWorkspaceSignIn(fromWorkspace: boolean, options?: { resumeCart: boolean; baseline?: SeenSnapshot }) {
+export function beginWorkspaceSignIn(fromWorkspace: boolean, options?: { resumeCart: boolean }) {
   endWorkspaceSignIn()
   if (!fromWorkspace) return
   signInOrigin.value = options?.resumeCart ? 'diy-cart' : 'diy'
-  seenBaseline.value = options?.baseline ?? readSeen()
+  seenBaseline.value = readSeen()
   try {
     sessionStorage.setItem(signInKey, JSON.stringify({ version: 1, origin: signInOrigin.value, baseline: seenBaseline.value }))
   } catch { /* The active page can still complete the flow. */ }

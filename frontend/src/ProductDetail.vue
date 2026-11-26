@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { ElButton, ElDialog, ElSkeleton } from 'element-plus'
-import { formatParameter, formatPrice, imageFallback, loadProduct } from './catalog'
+import { formatParameter, formatPrice, imageFallback, loadProduct, motherboardPlatform } from './catalog'
 import { formatPerformanceScore } from './performance'
 import { useCatalogRequest } from './useCatalogRequest'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
@@ -13,6 +13,17 @@ const { data: detail, status, error, retryable, refresh } = useCatalogRequest(
   signal => loadProduct(props.id, signal), '商品详情')
 const { add, error: cartError, notice: cartNotice } = useCart()
 const adding = ref(false)
+const cpuBenchmarks = [
+  { code: 'geekbench7SingleCore', label: 'Geekbench 7 单核' },
+  { code: 'geekbench7MultiCore', label: 'Geekbench 7 多核' },
+]
+const cpuScores = computed(() => detail.value?.product.category === 'CPU' ? cpuBenchmarks.map(benchmark => ({
+  ...benchmark, parameter: detail.value?.parameters.find(parameter => parameter.code === benchmark.code),
+})) : [])
+const cpuScoreNotes = computed(() => [...new Set(cpuScores.value.map(benchmark => benchmark.parameter?.note).filter(Boolean))])
+const categoryParameters = computed(() => detail.value?.parameters.filter(parameter =>
+  !cpuScores.value.some(benchmark => benchmark.code === parameter.code)) ?? [])
+const scoreEstimate = computed(() => detail.value?.product.performanceTags.find(tag => tag.kind === 'ESTIMATE'))
 watch(() => props.id, refresh, { immediate: true })
 
 async function addToCart() {
@@ -29,7 +40,7 @@ async function addToCart() {
     <div v-else-if="status === 'error'" class="detail-error" role="alert"><h2>无法查看商品详情</h2><p>{{ error }}</p><ElButton v-if="retryable" type="primary" @click="refresh">重新加载详情</ElButton></div>
     <div v-else-if="detail" class="product-detail">
       <div class="detail-overview">
-        <div class="detail-image"><img :src="detail.product.imageUrl" :alt="`${detail.product.categoryLabel}品类示意图`" @error="imageFallback"/><span>品类示意图</span></div>
+        <div class="detail-image"><div :data-motherboard-platform="motherboardPlatform(detail.product)"><img :src="detail.product.imageUrl" :alt="`${detail.product.categoryLabel}品类示意图`" @error="imageFallback"/></div><span>品类示意图</span></div>
         <div><p class="detail-category">{{ detail.product.categoryLabel }} · {{ detail.product.brand }}</p><h2>{{ detail.product.name }}</h2><p class="detail-description">{{ detail.description }}</p>
           <div class="detail-price"><span class="product-price">¥ {{ formatPrice(detail.product.price) }}</span><span class="stock" :class="{ unavailable: detail.product.stock === 0 }">{{ detail.product.stock === 0 ? '暂时缺货' : `库存 ${detail.product.stock} 件` }}</span></div>
           <p class="detail-demo-note">{{ detail.product.priceNote }}</p>
@@ -51,17 +62,38 @@ async function addToCart() {
         <dt>型号来源</dt><dd><a :href="detail.product.sourceUrl" target="_blank" rel="noopener noreferrer">型号资料 ↗</a></dd>
       </dl>
       <section class="detail-performance-tags"><h3>性能标签</h3><ProductPerformanceTags :tags="detail.product.performanceTags"/></section>
-      <section v-if="detail.performance" class="performance-public" aria-label="性能参考">
+      <section v-if="detail.performance || cpuScores.length" class="performance-public" aria-label="性能参考">
         <h3>性能参考</h3>
-        <p><strong class="performance-score">{{ detail.performance.score === null ? '暂无有效参考分' : `${detail.performance.performanceScore ? '综合评分 ' : ''}${formatPerformanceScore(detail.performance.score)} / 100` }}</strong> · {{ detail.performance.note }}</p>
-        <p v-if="detail.performance.performanceScore">性能子分 {{ formatPerformanceScore(detail.performance.performanceScore) }} / 100（仅比较性能参数）</p>
-        <small>映射版本 {{ detail.performance.mappingVersion }}</small>
+        <p v-if="scoreEstimate"><strong class="performance-score">{{ scoreEstimate.label }}</strong> · {{ scoreEstimate.note }}</p>
+        <template v-else-if="detail.performance">
+          <p><strong class="performance-score"><template v-if="detail.product.category === 'CPU' || detail.product.category === 'GPU'">Blender 渲染参考分 </template>{{ detail.performance.score === null ? '暂无有效参考分' : `${detail.performance.performanceScore ? '综合评分 ' : ''}${formatPerformanceScore(detail.performance.score)} / 100` }}</strong> · {{ detail.performance.note }}</p>
+          <p v-if="detail.performance.performanceScore">性能子分 {{ formatPerformanceScore(detail.performance.performanceScore) }} / 100（仅比较性能参数）</p>
+          <small>映射版本 {{ detail.performance.mappingVersion }}</small>
+        </template>
+        <dl v-if="cpuScores.length" class="detail-cpu-benchmarks">
+          <template v-for="benchmark in cpuScores" :key="benchmark.code">
+            <dt>{{ benchmark.label }}</dt>
+            <dd v-if="benchmark.parameter?.value != null && benchmark.parameter.sourceUrl">
+              <strong>{{ formatParameter(benchmark.parameter) }}</strong>
+              <a :href="benchmark.parameter.sourceUrl" target="_blank" rel="noopener noreferrer" :aria-label="`${benchmark.label}来源`">来源 ↗</a>
+            </dd>
+            <dd v-else>暂无已核验成绩</dd>
+          </template>
+        </dl>
+        <small v-for="note in cpuScoreNotes" :key="note" class="detail-cpu-benchmark-note">{{ note }}</small>
       </section>
       <h3>分类参数</h3>
       <table class="parameter-table"><thead><tr><th scope="col">参数</th><th scope="col">数值 / 支持集合</th><th scope="col">资料</th></tr></thead><tbody>
-        <tr v-for="parameter in detail.parameters" :key="parameter.code"><th scope="row">{{ parameter.label }}</th><td><span :class="{ 'unverified-value': parameter.value === null }">{{ formatParameter(parameter) }}</span><small v-if="parameter.note">{{ parameter.note }}</small></td><td><a :href="parameter.sourceUrl" target="_blank" rel="noopener noreferrer" :aria-label="`${parameter.label}的厂商来源`">来源 ↗</a></td></tr>
+        <tr v-for="parameter in categoryParameters" :key="parameter.code"><th scope="row">{{ parameter.label }}</th><td><span :class="{ 'unverified-value': parameter.value === null }">{{ parameter.code === 'socket' && detail.socketLabel ? detail.socketLabel : formatParameter(parameter) }}</span><small v-if="parameter.note">{{ parameter.note }}</small></td><td><a :href="parameter.sourceUrl" target="_blank" rel="noopener noreferrer" :aria-label="`${parameter.label}的厂商来源`">来源 ↗</a></td></tr>
       </tbody></table>
     </div>
     <template #footer><ElButton @click="emit('close')">关闭详情</ElButton><ElButton v-if="status === 'ready'" type="primary" @click="refresh">刷新价格与库存</ElButton></template>
   </ElDialog>
 </template>
+
+<style scoped>
+.detail-cpu-benchmarks { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 12px 0 0; }
+.detail-cpu-benchmarks dd { margin: 0; }
+.detail-cpu-benchmarks a { display: inline-block; margin-left: 8px; font-size: 12px; }
+.detail-cpu-benchmark-note { display: block; margin-top: 6px; }
+</style>

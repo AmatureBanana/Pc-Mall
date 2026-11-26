@@ -7,13 +7,13 @@ export function formatPerformanceScore(score: string): string {
 }
 
 export interface PerformanceTag {
-  code: string; label: string; kind: 'SCORE' | 'CAPABILITY' | 'UNVERIFIED'; sourceUrl: string; note: string
+  code: string; label: string; kind: 'SCORE' | 'ESTIMATE' | 'CAPABILITY' | 'UNVERIFIED'; sourceUrl: string; note: string
 }
 export function isPerformanceTag(value: unknown): value is PerformanceTag {
   if (!value || typeof value !== 'object') return false
   const item = value as Record<string, unknown>
   return typeof item.code === 'string' && item.code !== '' && typeof item.label === 'string' && item.label !== ''
-    && ['SCORE', 'CAPABILITY', 'UNVERIFIED'].includes(String(item.kind)) && typeof item.note === 'string'
+    && ['SCORE', 'ESTIMATE', 'CAPABILITY', 'UNVERIFIED'].includes(String(item.kind)) && typeof item.note === 'string'
     && typeof item.sourceUrl === 'string' && (item.kind === 'UNVERIFIED' || /^https?:\/\//.test(item.sourceUrl))
 }
 

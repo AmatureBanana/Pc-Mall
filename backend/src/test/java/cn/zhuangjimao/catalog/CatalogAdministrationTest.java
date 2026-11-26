@@ -85,13 +85,13 @@ class CatalogAdministrationTest {
         String path = "/api/admin/products/" + id;
         var publish = post(admin, path + "/status", Map.of("status", "ON_SALE", "revision", 0));
         assertThat(publish.statusCode()).isEqualTo(400);
-        assertThat(publish.body()).contains("socket", "peakPowerEstimate", "integratedGraphics");
+        assertThat(publish.body()).contains("socket", "tdp", "integratedGraphics");
         var edit = input.deepCopy(); edit.remove(List.of("sku", "category", "price"));
         edit.put("revision", 0).put("name", "新CPU名称");
         edit.set("parameters", json.readTree("""
             [{"code":"socket","value":"LGA1700","unit":"","sourceUrl":"https://example.com/cpu"},
              {"code":"integratedGraphics","value":false,"unit":"","sourceUrl":"https://example.com/cpu"},
-             {"code":"peakPowerEstimate","value":181,"unit":"W","sourceUrl":"https://example.com/cpu"}]
+             {"code":"tdp","value":125,"unit":"W","sourceUrl":"https://example.com/cpu"}]
             """));
         assertThat(post(admin, path, edit).statusCode()).isEqualTo(200);
         assertThat(post(admin, path, edit).statusCode()).isEqualTo(409);
@@ -120,7 +120,7 @@ class CatalogAdministrationTest {
 
     @Test void eightCategoryParametersRejectBadTypesUnitsSetsAndMissingApplicableFields() throws Exception {
         Map<String,String> fixtures = Map.of(
-                "CPU", "[\"socket\",\"integratedGraphics\",\"peakPowerEstimate\"]",
+                "CPU", "[\"socket\",\"integratedGraphics\",\"tdp\"]",
                 "MOTHERBOARD", "[\"socket\",\"memoryGenerations\",\"memorySlots\",\"formFactor\",\"ssdSlots\",\"gpuInterfaces\",\"displayOutputs\"]",
                 "GPU", "[\"installationInterface\",\"boardPowerEstimate\",\"length\",\"displayOutputs\"]",
                 "MEMORY", "[\"generation\",\"totalCapacity\",\"stickCount\"]",
@@ -193,7 +193,7 @@ class CatalogAdministrationTest {
 
     @Test void eachCategoryCanBePublishedWithTypedParametersAndCapacityConversionsAreExact() throws Exception {
         var fixtures = Map.of(
-                "CPU",List.of(parameter("socket","AM5",""),parameter("integratedGraphics",true,""),parameter("peakPowerEstimate",160,"W")),
+                "CPU",List.of(parameter("socket","AM5",""),parameter("integratedGraphics",true,""),parameter("tdp",120,"W")),
                 "MOTHERBOARD",List.of(parameter("socket","AM5",""),parameter("formFactor","Micro-ATX",""),parameter("memoryGenerations",List.of("DDR5"),""),
                         parameter("memorySlots",4,"个"),parameter("displayOutputs",List.of("HDMI"),""),parameter("gpuInterfaces",List.of("PCIe x16"),""),
                         parameter("ssdSlots",List.of(Map.of("formFactor","M.2 2280","interface","PCIe","protocol","NVMe")),"")),

@@ -12,6 +12,27 @@
 
 按品牌与完整型号匹配目录 CPU。`i5-14600K` 和 `i5-14600KF` 各自使用独立的榜单条目，`7800X3D` 保留完整后缀。 [商品参数](../catalog-parameters.md) · [性能参考](../performance-data.md)
 
+## 扩展目录补录
+
+2026-11-25 为扩展目录新增 60 款 CPU 的单核和多核成绩。48 款按品牌和完整型号匹配官方 Geekbench 7 处理器总榜，原先已录入的 3 款保留其历史成绩。详情页随成绩显示来源和采集口径。 [Geekbench 7 处理器总榜](https://browser.geekbench.com/processor-benchmarks) · [补录迁移](../../backend/src/main/resources/db/catalog/V38__expanded_cpu_geekbench7_references.sql)
+
+另外 12 款采用 Geekbench Browser 上可核对准确型号、单核和多核的单次 CPU 测试。这些成绩受测试平台及设置影响，不能当作型号平均分。Geekbench 7.0 和 7.1 的 CPU 分数可以比较。 [版本说明](https://www.geekbench.com/blog/2026/09/geekbench-71/)
+
+| 型号 | 单核 | 多核 | 测试版本和系统 | 来源 |
+| --- | ---: | ---: | --- | --- |
+| AMD Ryzen 5 7600X3D | 2371 | 11534 | Geekbench 7.1.0 Linux | [公开结果](https://browser.geekbench.com/v7/cpu/812463) |
+| AMD Ryzen 5 8400F | 2236 | 10331 | Geekbench 7.1.0 Windows | [公开结果](https://browser.geekbench.com/v7/cpu/906853) |
+| AMD Ryzen 5 8500G | 2145 | 9149 | Geekbench 7.1.0 Windows | [公开结果](https://browser.geekbench.com/v7/cpu/875358) |
+| AMD Ryzen 5 8600G | 2314 | 11234 | Geekbench 7.1.0 Linux | [公开结果](https://browser.geekbench.com/v7/cpu/958663) |
+| Intel Core Ultra 5 245K | 2617 | 19492 | Geekbench 7.0.0 Windows | [公开结果](https://browser.geekbench.com/v7/cpu/146096) |
+| Intel Core Ultra 5 225F | 2125 | 11849 | Geekbench 7.1.0 Windows | [公开结果](https://browser.geekbench.com/v7/cpu/921808) |
+| Intel Core Ultra 5 235 | 2661 | 16108 | Geekbench 7.1.0 Linux | [公开结果](https://browser.geekbench.com/v7/cpu/compare/727915?baseline=684680) |
+| Intel Core Ultra 5 225 | 2492 | 11676 | Geekbench 7.0.0 Windows | [公开结果](https://browser.geekbench.com/v7/cpu/compare/457613?baseline=451232) |
+| Intel Core Ultra 9 285 | 2825 | 20194 | Geekbench 7.0.0 Windows | [公开结果](https://beta.geekbench.com/v7/cpu/65903) |
+| Intel Core Ultra 7 265 | 2842 | 21974 | Geekbench 7.1.0 Linux | [公开结果](https://browser.geekbench.com/v7/cpu/compare/730336?baseline=5431) |
+| Intel Core Ultra 7 265F | 2629 | 21892 | Geekbench 7.1.0 Windows | [公开结果](https://browser.geekbench.com/v7/cpu/956564) |
+| Intel Core Ultra 5 245KF | 2974 | 21097 | Geekbench 7.1.0 Linux | [公开结果](https://browser.geekbench.com/v7/cpu/495022) |
+
 ## 同口径参考型号
 
 这些型号用于观察单核和多核分数的跨度。所列数值同样来自上表使用的 Geekbench 7 总榜，供后续讨论场景阈值。 [Geekbench Processor Benchmark Chart](https://browser.geekbench.com/processor-benchmarks)

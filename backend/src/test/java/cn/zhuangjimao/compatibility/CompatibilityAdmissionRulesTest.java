@@ -14,7 +14,7 @@ class CompatibilityAdmissionRulesTest {
         for (Object value : List.of("155", true, -1, 0, List.of(155))) {
             assertThat(rule(CompatibilityRules.check(parts(part(COOLER, "散热器", number("height", value)),
                     part(CASE, "机箱", number("maxCoolerHeight", 163)))), "C10").state()).isEqualTo(RuleState.UNKNOWN);
-            assertThat(rule(CompatibilityRules.check(parts(part(CPU, "CPU", number("peakPowerEstimate", value)),
+            assertThat(rule(CompatibilityRules.check(parts(part(CPU, "CPU", number("tdp", value)),
                     part(PSU, "电源", number("ratedPower", 750)))), "C08").state()).isEqualTo(RuleState.UNKNOWN);
         }
         assertThat(rule(CompatibilityRules.check(parts(part(GPU, "无来源长度", new Parameter("length", number("length", 244).value(), false)),
@@ -45,15 +45,26 @@ class CompatibilityAdmissionRulesTest {
     }
 
     @Test
-    void c08UsesTheFrozenCeilingFormulaAndAllowsExactPowerIncludingNoDiscreteGpu() {
+    void c08RequiresTdpPlusFifteenPercentWithoutAnUpperLimit() {
         var cpu = part(CPU, "CPU", number("peakPowerEstimate", 125), number("tdp", 65));
         var gpu = part(GPU, "GPU", number("boardPowerEstimate", 200));
-        assertThat(rule(CompatibilityRules.check(parts(cpu, gpu, part(PSU, "电源", number("ratedPower", 527)))), "C08").state()).isEqualTo(RuleState.PASS);
-        assertThat(rule(CompatibilityRules.check(parts(cpu, gpu, part(PSU, "电源", number("ratedPower", 526)))), "C08").state()).isEqualTo(RuleState.FAIL);
-        assertThat(rule(CompatibilityRules.check(parts(cpu, part(PSU, "电源", number("ratedPower", 267)))), "C08").state()).isEqualTo(RuleState.PASS);
-        assertThat(rule(CompatibilityRules.check(parts(cpu, part(PSU, "电源", number("ratedPower", 266)))), "C08").state()).isEqualTo(RuleState.FAIL);
-        assertThat(rule(CompatibilityRules.check(parts(part(CPU, "仅 TDP", number("tdp", 125)), gpu,
-                part(PSU, "电源", number("ratedPower", 750)))), "C08").state()).isEqualTo(RuleState.UNKNOWN);
+        assertThat(rule(CompatibilityRules.check(parts(cpu, gpu, part(PSU, "电源", number("ratedPower", 397)))), "C08").state()).isEqualTo(RuleState.PASS);
+        assertThat(rule(CompatibilityRules.check(parts(cpu, gpu, part(PSU, "电源", number("ratedPower", 396)))), "C08").state()).isEqualTo(RuleState.FAIL);
+        assertThat(rule(CompatibilityRules.check(parts(cpu, part(PSU, "电源", number("ratedPower", 167)))), "C08").state()).isEqualTo(RuleState.PASS);
+        assertThat(rule(CompatibilityRules.check(parts(cpu, part(PSU, "电源", number("ratedPower", 166)))), "C08").state()).isEqualTo(RuleState.FAIL);
+        var cpu120 = part(CPU, "仅 TDP", number("tdp", 120));
+        for (int watts : List.of(460, 750)) {
+            assertThat(rule(CompatibilityRules.check(parts(cpu120, gpu, part(PSU, "电源", number("ratedPower", watts)))), "C08").state()).isEqualTo(RuleState.PASS);
+        }
+        var missingCpu = rule(CompatibilityRules.check(parts(part(CPU, "仅峰值", number("peakPowerEstimate", 125)), gpu,
+                part(PSU, "电源", number("ratedPower", 750)))), "C08");
+        assertThat(missingCpu.state()).isEqualTo(RuleState.UNKNOWN);
+        assertThat(missingCpu.message()).contains("CPU TDP").doesNotContain("显卡整卡功耗", "电源额定功率");
+
+        var missingGpuAndPsu = rule(CompatibilityRules.check(parts(cpu, part(GPU, "无功耗参数"),
+                part(PSU, "无来源", new Parameter("ratedPower", number("ratedPower", 750).value(), false)))), "C08");
+        assertThat(missingGpuAndPsu.state()).isEqualTo(RuleState.UNKNOWN);
+        assertThat(missingGpuAndPsu.message()).contains("显卡整卡功耗", "电源额定功率").doesNotContain("CPU 峰值功耗", "TDP");
     }
 
     @Test

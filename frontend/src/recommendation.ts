@@ -70,9 +70,9 @@ export async function recommend(scenario: Scenario, budget: string, signal: Abor
   return plan
 }
 
-let pending: { plan: RecommendationPlan; addToCart: boolean } | null = null
-export function queueRecommendation(plan: RecommendationPlan, addToCart: boolean) { pending = { plan, addToCart } }
-export function takeRecommendation() { const handoff = pending; pending = null; return handoff }
+let pending: RecommendationPlan | null = null
+export function queueRecommendation(plan: RecommendationPlan) { pending = plan }
+export function takeRecommendation() { const plan = pending; pending = null; return plan }
 export function recommendedWorkspace(plan: RecommendationPlan): Workspace {
   return { version: 1, revision: 0, origin: 'RECOMMENDATION',
     selections: plan.items.map(item => ({ category: item.category, productId: item.productId, source: 'RECOMMENDATION' })),

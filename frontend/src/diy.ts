@@ -272,7 +272,7 @@ export function isCompatibility(value: unknown, workspace: Workspace): value is 
   const hasGpu = workspace.selections.some(item => item.category === 'GPU')
   return !(!check || check.revision !== workspace.revision || typeof check.corePassed !== 'boolean'
       || !(check.memorySlots === null || Number.isSafeInteger(check.memorySlots) && check.memorySlots > 0)
-      || check.ruleVersion !== 'f03-core-graphics-choice-v3'
+      || check.ruleVersion !== 'f03-core-tdp-power-v4'
       || typeof check.catalogVersion !== 'string' || !/^[a-f0-9]{64}$/.test(check.catalogVersion)
       || typeof check.checkedAt !== 'string' || !Number.isFinite(Date.parse(check.checkedAt))
       || !Array.isArray(check.checks) || check.checks.length !== 9

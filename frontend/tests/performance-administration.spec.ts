@@ -93,9 +93,9 @@ test('administrator maintains traceable scores without losing product drafts and
     await panel.getByLabel('评分有效状态').selectOption('false')
     await panel.getByLabel('评分调整原因').fill('撤销有效分')
     await panel.getByRole('button', { name: '保存评分', exact: true }).click()
-    await expect(admin.getByRole('list', { name: '性能标签', exact: true })).toContainText('渲染评分待核验')
+    await expect(admin.getByRole('list', { name: '性能标签', exact: true })).toContainText('估算分')
     await scoreRace.complete()
-    await expect(admin.getByRole('list', { name: '性能标签', exact: true })).toContainText('渲染评分待核验')
+    await expect(admin.getByRole('list', { name: '性能标签', exact: true })).toContainText('估算分')
     await panel.getByLabel('评分有效状态').selectOption('true')
     await panel.getByLabel('评分调整原因').fill('重新核验恢复参考')
     await panel.getByRole('button', { name: '保存评分', exact: true }).click()
@@ -115,7 +115,7 @@ test('administrator maintains traceable scores without losing product drafts and
     await panel.getByRole('button', { name: '保存评分', exact: true }).click()
     await expect(panel.getByRole('status')).toContainText('评分与审计已保存')
     await expect(panel).toContainText('该性能参考已标记为无效')
-    await expect(admin.getByRole('list', { name: '性能标签', exact: true })).toContainText('渲染评分待核验')
+    await expect(admin.getByRole('list', { name: '性能标签', exact: true })).toContainText('估算分')
     await admin.getByRole('button', { name: '保存修改', exact: true }).click()
     await expect(admin.getByRole('alert').filter({ hasText: '重新载入' })).toBeVisible()
     await panel.scrollIntoViewIfNeeded()
@@ -123,6 +123,8 @@ test('administrator maintains traceable scores without losing product drafts and
     const publicDetail = (await (await page.request.get(`/api/products/${id}`)).json()).data
     expect(publicDetail.performance.state).toBe('INVALID')
     expect(publicDetail.performance.score).toBeNull()
+    await page.goto('/#product/' + id)
+    await expect(page.getByRole('region', { name: '性能参考', exact: true })).toContainText('估算分')
   } finally {
     const current = (await (await page.request.get(path)).json()).data
     await post(`${path}/status`, { revision: current.revision, status: 'OFF_SALE' })

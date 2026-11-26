@@ -19,6 +19,16 @@ const weightedComponents = computed(() => {
   const plan = result.value
   return plan?.status === 'SUCCESS' ? scoreComponents.filter(key => plan.weights[key] > 0) : []
 })
+const pointsFormat = new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const partScores = computed(() => {
+  const plan = result.value
+  if (plan?.status !== 'SUCCESS') return {}
+  return Object.fromEntries(weightedComponents.value.map(component => {
+    const weight = plan.weights[component]
+    const points = Number(plan.scores[component]) * weight / 100
+    return [component.toUpperCase(), { points: pointsFormat.format(points), weight }]
+  }))
+})
 let request: AbortController | null = null
 function reset() { request?.abort(); request = null; busy.value = false; error.value = ''; result.value = null }
 watch(budget, reset)
@@ -37,7 +47,7 @@ async function generate() {
     if (!current.signal.aborted) error.value = cause instanceof Error ? cause.message : '推荐失败，请重试。'
   } finally { if (request === current) busy.value = false }
 }
-async function transfer(addToCart: boolean) {
+async function transfer() {
   const plan = result.value
   if (plan?.status !== 'SUCCESS' || importing.value) return
   importing.value = true
@@ -47,7 +57,7 @@ async function transfer(addToCart: boolean) {
         { confirmButtonText: '确认替换', cancelButtonText: '保留原配置', type: 'warning' })
     }
     if (result.value !== plan) return
-    queueRecommendation(plan, addToCart); emit('start-diy')
+    queueRecommendation(plan); emit('start-diy')
   } catch { /* Cancel preserves the existing workspace and recommendation. */ }
   finally { importing.value = false }
 }
@@ -70,12 +80,29 @@ async function transfer(addToCart: boolean) {
         </li></ul>
       </div>
       <div class="recommendation-totals"><p>参考总价<strong>¥{{ formatPrice(result.total) }}</strong></p><p>预算余额<strong>¥{{ formatPrice(result.remaining) }}</strong></p></div>
-      <ul class="recommendation-parts"><li v-for="item in result.items" :key="item.category"><div><small>{{ item.product?.categoryLabel }} · {{ item.quantity }} 件</small><a :href="`#product/${item.productId}`">{{ item.product?.name }}</a><small>单价 ¥{{ formatPrice(item.product!.price) }}</small></div><strong>¥{{ formatPrice(item.amount!) }}</strong></li><li v-if="result.integratedGraphicsCpuId"><div><small>显卡选择</small><strong>使用所选 CPU 核显</strong></div><strong>¥0.00</strong></li></ul>
+      <ul class="recommendation-parts">
+        <li v-for="item in result.items" :key="item.category">
+          <div>
+            <small>{{ item.product?.categoryLabel }} · {{ item.quantity }} 件</small>
+            <a :href="`#product/${item.productId}`">{{ item.product?.name }}</a>
+            <small>单价 ¥{{ formatPrice(item.product!.price) }}</small>
+          </div>
+          <ScoreDisplay v-if="partScores[item.category]" class="recommendation-part-score" compact
+            :score="partScores[item.category]!.points" :max="partScores[item.category]!.weight"/>
+          <span v-else class="recommendation-part-score recommendation-part-unscored">不计分</span>
+          <strong class="recommendation-part-amount">¥{{ formatPrice(item.amount!) }}</strong>
+        </li>
+        <li v-if="result.integratedGraphicsCpuId">
+          <div>
+            <small>显卡选择</small>
+            <strong>使用所选 CPU 核显</strong>
+          </div>
+          <span class="recommendation-part-score recommendation-part-unscored">不计分</span>
+          <strong class="recommendation-part-amount">¥0.00</strong>
+        </li>
+      </ul>
       <details class="recommendation-reasons" open><summary>推荐理由与检测范围</summary><ul><li v-for="reason in result.reasons" :key="reason">{{ reason }}</li><li>核心检查通过。{{ result.compatibility.unexecutedExtensions.length }} 项扩展检测未执行，BIOS、超频及实机表现未验证。</li></ul></details>
-      <div class="recommendation-actions">
-        <ElButton :disabled="importing" @click="transfer(false)">转入 DIY 调整</ElButton>
-        <ElButton type="primary" :disabled="importing" @click="transfer(true)">加入购物车</ElButton>
-      </div>
+      <ElButton type="primary" class="recommendation-action" :disabled="importing" @click="transfer">转入 DIY 调整</ElButton>
     </section>
   </div>
 </template>
@@ -95,12 +122,18 @@ async function transfer(addToCart: boolean) {
 .recommendation-totals { display: flex; gap: 36px; padding: 4px 0; }
 .recommendation-totals p { line-height: 1.8; font-size: 13px; }.recommendation-totals strong { display: block; color: #19304f; font-size: 20px; }
 .recommendation-parts { margin: 0; padding: 0; list-style: none; border-top: 1px solid #e1eafa; }
-.recommendation-parts li { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid #e1eafa; }
-.recommendation-parts li > strong { white-space: nowrap; font-size: 14px; }.recommendation-parts small { display: block; font-size: 12px; color: #6d809c; margin-block: 3px; }
+.recommendation-parts li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(90px, 24%) 104px; align-items: center; gap: 16px; padding: 12px 0; border-bottom: 1px solid #e1eafa; }
+.recommendation-part-amount { text-align: right; white-space: nowrap; font-size: 14px; }
+.recommendation-parts small { display: block; font-size: 12px; color: #6d809c; margin-block: 3px; }
 .recommendation-parts li > div { min-width: 0; overflow-wrap: anywhere; }
 .recommendation-parts a { display: block; color: #1a5dad; line-height: 1.7; }.recommendation-parts a:hover { text-decoration: underline; }
+.recommendation-part-score { text-align: center; }
+.recommendation-part-unscored { color: #536a89; font-size: 13px; }
 .recommendation-reasons { margin-block: 20px; font-size: 13px; line-height: 1.9; }.recommendation-reasons summary { cursor: pointer; font-weight: 650; }.recommendation-reasons ul { padding-left: 20px; }
-.recommendation-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.recommendation-actions .el-button { height: 44px; margin: 0; }
-@media (max-width: 500px) { .recommendation-budget { align-items: stretch; flex-direction: column; }.recommendation-score { padding: 14px; } }
+.recommendation-action { width: 100%; height: 44px; }
+@media (max-width: 500px) {
+  .recommendation-budget { align-items: stretch; flex-direction: column; }
+  .recommendation-score { padding: 14px; }
+  .recommendation-parts li { grid-template-columns: minmax(0, 1fr) 82px 72px; gap: 8px; }
+}
 </style>
