@@ -95,7 +95,7 @@ V19 新增三张表：
 
 ## DIY 方案入车
 
-确认“转入购物车”后，`POST /api/cart/configurations` 接收 `selections`（每项为 `category`、`productId`）及可选的 `integratedGraphicsCpuId`、`memoryQuantity`（默认 1）。服务端使用 Session 身份和当前商品数据，复用 F03 核验整套配置（含内存插槽），并检查加上此组后的同 SKU 总需求。组内保存各 SKU 数量；同一购物车内类别、SKU 与数量均相同的配置只保留一组，单品与整组不互相合并。
+点击“转入购物车”后，`POST /api/cart/configurations` 接收 `selections`（每项为 `category`、`productId`）及可选的 `integratedGraphicsCpuId`、`memoryQuantity`（默认 1）。服务端使用 Session 身份和当前商品数据，复用 F03 核验整套配置（含内存插槽），并检查加上此组后的同 SKU 总需求。组内保存各 SKU 数量；同一购物车内类别、SKU 与数量均相同的配置只保留一组，单品与整组不互相合并。
 
 购物车响应的 `configurations` 包含各组的 `id`、`items`、`amount` 与可售状态 `valid`；`DELETE /api/cart/configurations/{id}` 只允许删除本人整组。现价金额包含单品和配置组，不预占或扣减库存。打开购物车后关闭可继续编辑原 DIY 方案。
 

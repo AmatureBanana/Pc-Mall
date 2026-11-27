@@ -61,7 +61,7 @@ class ProductCatalog {
 
     private ProductPerformanceTags.TaggedProduct localized(ProductPerformanceTags.TaggedProduct item) {
         return new ProductPerformanceTags.TaggedProduct(CatalogBrandNames.localized(item.product()),
-                item.performanceTags(), item.platform());
+                item.performanceTags(), item.platform(), item.capacityGb(), item.ratedPowerWatts());
     }
 
     record Parameter(String code, String label, JsonNode value, String unit, String sourceUrl, String note) {}

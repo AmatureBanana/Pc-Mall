@@ -5,11 +5,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
 import java.util.regex.Pattern;
 
-/** Public catalog summaries, platform filters and labels from current product data. */
+/** Public catalog summaries, filters and labels from current product data. */
 @Service
 class ProductPerformanceTags {
     private static final Pattern NVIDIA_GPU = Pattern.compile("\\b(?:GEFORCE|NVIDIA|QUADRO)\\b");
@@ -40,7 +41,15 @@ class ProductPerformanceTags {
             parameters.forEach(field -> fields.put(field.path("code").asText(),field));
             var platform=platform(product,fields);
             var displayProduct=withDisplaySummary(product,fields,platform);
-            result.add(new TaggedProduct(displayProduct,labels(product,fields,performance.evaluate(product,parameters,reference)),platform));
+            var capacityGb=switch (product.category()) {
+                case "MEMORY" -> HardwareParameters.sourcedNumber(parameters, HardwareCategory.MEMORY, "totalCapacity", "GB");
+                case "SSD" -> HardwareParameters.sourcedSsdCapacity(parameters);
+                default -> null;
+            };
+            var ratedPowerWatts=product.category().equals("PSU")
+                    ? HardwareParameters.sourcedNumber(parameters, HardwareCategory.PSU, "ratedPower", "W") : null;
+            result.add(new TaggedProduct(displayProduct,labels(product,fields,performance.evaluate(product,parameters,reference)),
+                    platform,capacityGb,ratedPowerWatts));
         }
         return result;
     }
@@ -236,5 +245,6 @@ class ProductPerformanceTags {
         tags.add(new Tag(code,label,"CAPABILITY",field.path("sourceUrl").asText(),note+(sourceNote.isBlank() ? "" : " "+sourceNote)));
     }
     record Tag(String code,String label,String kind,String sourceUrl,String note) {}
-    record TaggedProduct(@JsonUnwrapped Product product,List<Tag> performanceTags,String platform) {}
+    record TaggedProduct(@JsonUnwrapped Product product,List<Tag> performanceTags,String platform,BigDecimal capacityGb,
+                         BigDecimal ratedPowerWatts) {}
 }

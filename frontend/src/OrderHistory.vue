@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElButton, ElEmpty, ElSkeleton } from 'element-plus'
 import { signedIn } from './auth'
-import { categories, formatPrice, imageFallback } from './catalog'
+import { categoryName, formatPrice, imageFallback } from './catalog'
 import { cancellationReasons, orderStates, useCart, type Order } from './cart'
 import HardwareIcon from './HardwareIcon.vue'
 import OrderActionDialog from './OrderActionDialog.vue'
@@ -29,7 +29,6 @@ const tabs = [
 const lastPage = computed(() => Math.max(1, Math.ceil((orderHistory.value?.total ?? 0) / pageSize.value)))
 const pageButtons = computed(() => Array.from({ length: Math.min(lastPage.value, 5) }, (_, i) => Math.max(1, Math.min(page.value - 2, lastPage.value - 4)) + i))
 const time = (value: string) => new Date(value).toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai' })
-const categoryName = (category: string) => categories.find(item => item.code === category)?.label ?? category
 const categoryImage = (category: string) => `/images/${category === 'CPU' ? 'intel-cpu' : category === 'MOTHERBOARD' ? 'motherboard' : category.toLowerCase()}.svg`
 function refresh() {
   if (signedIn.value) void loadOrders(page.value, { pageSize: pageSize.value, status: state.value,

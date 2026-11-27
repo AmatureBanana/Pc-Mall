@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { ElButton } from 'element-plus'
 import OrderActionDialog from './OrderActionDialog.vue'
 import { cancellationReasons, orderStates, useCart } from './cart'
-import { formatPrice } from './catalog'
+import { categoryName, formatPrice } from './catalog'
 import { signedIn } from './auth'
 import { sortHardwareItems } from './diy'
 
@@ -39,7 +39,7 @@ const sections = computed(() => order.value ? [
           <h3>{{ section.title }}</h3>
           <table><thead><tr><th>商品 / SKU</th><th>型号 / 类别</th><th>单价</th><th>数量</th><th>小计</th></tr></thead>
             <tbody><tr v-for="item in section.items" :key="item.productId"><td>{{ item.name }}<small>{{ item.sku }}</small></td>
-              <td>{{ item.model }} / {{ item.category }}</td><td>¥{{ formatPrice(item.price) }}</td><td>{{ item.quantity }}</td><td>¥{{ formatPrice(item.amount) }}</td></tr></tbody>
+              <td>{{ item.model }} / {{ categoryName(item.category) }}</td><td>¥{{ formatPrice(item.price) }}</td><td>{{ item.quantity }}</td><td>¥{{ formatPrice(item.amount) }}</td></tr></tbody>
           </table>
           <p v-if="section.amount">组成交小计：¥{{ formatPrice(section.amount) }}</p>
         </section>

@@ -22,6 +22,7 @@ const loading = ref(true)
 const working = ref('')
 const error = ref('')
 const notice = ref('')
+const avatarInput = ref<HTMLInputElement | null>(null)
 let active = true
 
 function navigate(target = '') { window.location.hash = target }
@@ -104,7 +105,12 @@ onUnmounted(() => { active = false; clearSecrets(); emit('busy', false) })
     <p v-if="error" role="alert" class="auth-error">{{ error }}</p>
     <p v-if="notice" role="status" class="auth-success">{{ notice }}</p>
     <template v-if="profile && !loading">
-      <div v-if="mode === 'profile'" class="profile-avatar"><UserAvatar/><div><label>上传头像<input type="file" accept="image/png,image/jpeg" aria-label="上传头像" :disabled="!!working" @change="selectAvatar"/></label><p>{{ working === 'avatar' ? '正在上传…' : '支持 PNG、JPEG，最大2MB；将居中裁切为方形。' }}</p></div></div>
+      <div v-if="mode === 'profile'" class="profile-avatar">
+        <button type="button" class="profile-avatar-button" aria-label="上传头像" aria-describedby="avatar-help"
+          title="上传头像" :disabled="!!working" @click="avatarInput?.click()"><UserAvatar/></button>
+        <input ref="avatarInput" type="file" accept="image/png,image/jpeg" hidden :disabled="!!working" @change="selectAvatar"/>
+        <p id="avatar-help" aria-live="polite">{{ working === 'avatar' ? '正在上传…' : '支持 PNG、JPEG，最大 2 MB，将居中裁切为方形。' }}</p>
+      </div>
       <dl class="profile-identity"><div v-if="mode === 'profile'"><dt>账户 ID</dt><dd>{{ profile.id }}</dd></div><div><dt>用户名</dt><dd>{{ profile.username }}</dd></div><div><dt>账户角色</dt><dd>{{ profile.role === 'ADMIN' ? '管理员' : '普通用户' }}</dd></div></dl>
       <div class="profile-sections">
         <section v-if="mode === 'profile'"><h2>个人昵称</h2><p>昵称会显示在商城顶部，留空时使用用户名。</p>
@@ -132,9 +138,10 @@ onUnmounted(() => { active = false; clearSecrets(); emit('busy', false) })
 .account-profile-card { padding: 28px; border: 1px solid #e5ecf8; background: white; border-radius: 15px; min-height: 420px; }
 .profile-avatar { display: flex; align-items: center; gap: 20px; margin-bottom: 24px; }
 .profile-avatar :deep(.user-avatar) { width: 80px; height: 80px; }
-.profile-avatar label { display: grid; gap: 8px; font-size: 14px; }
+.profile-avatar-button { display: inline-flex; flex: none; padding: 0; border: 0; border-radius: 50%; background: transparent; }
+.profile-avatar-button:hover:not(:disabled) { box-shadow: 0 0 0 3px #dbe8ff; }
+.profile-avatar-button:disabled { opacity: .65; cursor: default; }
 .profile-avatar p { color: #7c8ea6; font-size: 12px; }
-.profile-avatar input { max-width: 100%; }
 .profile-identity { gap: 24px 70px; }
 @media (max-width: 700px) { .account-profile-card { padding: 18px; } .profile-identity { gap: 20px; } }
 </style>

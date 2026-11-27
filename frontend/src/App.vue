@@ -15,6 +15,7 @@ import UserCenter from './UserCenter.vue'
 import ProfilePanel from './ProfilePanel.vue'
 import { categories, formatPrice, imageFallback, loadProducts, motherboardPlatform, type Category } from './catalog'
 import { useCatalogRequest } from './useCatalogRequest'
+import { useProductFilters } from './useProductFilters'
 import { signedIn } from './auth'
 import { useCart } from './cart'
 
@@ -45,10 +46,11 @@ const userCenterOpen = computed(() => ordersOpen.value || !!orderNumber.value ||
 const accountSection = computed(() => ordersOpen.value || orderNumber.value ? 'orders' : cartOpen.value ? 'cart' : accountRoute.value)
 const { data, status, error, refresh } = useCatalogRequest(
   signal => loadProducts(signal, selectedCategory.value, keyword.value), '商品')
-const products = computed(() => data.value ?? [])
+const { brand, platform, brands, platforms, capacity, capacities, ratedPower, ratedPowers,
+  filteredProducts, selectPlatform } = useProductFilters(data, selectedCategory)
 const showSummaryCategory = (category: Category) => category === 'CPU' || category === 'MOTHERBOARD'
 const visibleProducts = computed(() => {
-  const items = products.value.filter(product =>
+  const items = filteredProducts.value.filter(product =>
     Number(product.price) >= priceRange.value.min && Number(product.price) <= priceRange.value.max)
   if (sort.value === 'price-asc') items.sort((a, b) => Number(a.price) - Number(b.price) || a.id - b.id)
   if (sort.value === 'price-desc') items.sort((a, b) => Number(b.price) - Number(a.price) || a.id - b.id)
@@ -73,6 +75,8 @@ function applyPrice() {
 }
 function resetFilters() {
   selectedCategory.value = 'ALL'
+  brand.value = platform.value = capacity.value = ''
+  ratedPower.value = null
   searchInput.value = keyword.value = minInput.value = maxInput.value = filterError.value = ''
   priceRange.value = { min: 0, max: Infinity }
 }
@@ -95,6 +99,10 @@ function openDetailSignIn() { window.location.hash = 'login' }
 onMounted(() => {
   void refresh(); syncDetail()
   window.addEventListener('hashchange', syncDetail)
+})
+watch(selectedCategory, () => {
+  brand.value = platform.value = capacity.value = ''
+  ratedPower.value = null
 })
 watch([selectedCategory, keyword], refresh)
 onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
@@ -132,13 +140,51 @@ onUnmounted(() => window.removeEventListener('hashchange', syncDetail))
         <p class="sidebar-note"><HardwareIcon name="check"/>真实型号 · 清晰价格 · 当前库存</p>
       </aside>
       <section class="catalog" aria-label="商品列表" :aria-busy="status === 'loading'">
-        <div class="catalog-toolbar"><p aria-live="polite">{{ status === 'loading' ? '正在加载商品…' : status === 'error' ? '商品暂时无法加载' : `共 ${visibleProducts.length} 件商品` }}<span v-if="status === 'ready'" class="demo-label">演示商品</span></p><label class="sort"><span class="sr-only">商品排序</span><select v-model="sort" aria-label="商品排序"><option value="default">综合排序</option><option value="price-asc">价格从低到高</option><option value="price-desc">价格从高到低</option></select></label></div>
+        <form class="product-list-search catalog-list-search" role="search" aria-label="商品列表搜索" @submit.prevent="search">
+          <HardwareIcon name="search"/>
+          <input v-model="searchInput" aria-label="搜索当前分类商品" placeholder="在当前类别中搜索型号或参数" maxlength="100"/>
+          <button type="submit" aria-label="搜索商品列表">搜索</button>
+        </form>
+        <div v-if="status === 'ready' && selectedCategory !== 'ALL' && (platforms.length || brands.length || capacities.length || ratedPowers.length)" class="catalog-filters">
+          <div v-if="platforms.length" class="product-filter-options" role="group" aria-label="平台">
+            <span>平台：</span>
+            <div class="catalog-filter-buttons">
+              <button :aria-pressed="!platform" @click="selectPlatform('')">全部</button>
+              <button v-for="item in platforms" :key="item" :aria-pressed="platform === item" @click="selectPlatform(item)">{{ item }}</button>
+            </div>
+          </div>
+          <div v-if="brands.length" class="product-filter-options" role="group" aria-label="品牌">
+            <span>品牌：</span>
+            <div class="catalog-filter-buttons">
+              <button :aria-pressed="!brand" @click="brand = ''">全部</button>
+              <button v-for="item in brands" :key="item" :aria-pressed="brand === item" @click="brand = item">{{ item }}</button>
+            </div>
+          </div>
+          <div v-if="capacities.length" class="product-filter-options" role="group" aria-label="容量">
+            <span>容量：</span>
+            <div class="catalog-filter-buttons">
+              <button :aria-pressed="!capacity" @click="capacity = ''">全部</button>
+              <button v-for="item in capacities" :key="item" :aria-pressed="capacity === item" @click="capacity = item">{{ item }}</button>
+            </div>
+          </div>
+          <div v-if="ratedPowers.length" class="product-filter-options" role="group" aria-label="额定功率">
+            <span>额定功率：</span>
+            <div class="catalog-filter-buttons">
+              <button :aria-pressed="ratedPower === null" @click="ratedPower = null">全部</button>
+              <button v-for="watts in ratedPowers" :key="watts" :aria-pressed="ratedPower === watts" @click="ratedPower = watts">{{ watts }}W</button>
+            </div>
+          </div>
+        </div>
+        <div class="catalog-toolbar">
+          <p aria-live="polite">{{ status === 'loading' ? '正在加载商品…' : status === 'error' ? '商品暂时无法加载' : `共 ${visibleProducts.length} 件商品` }}<span v-if="status === 'ready'" class="demo-label">演示商品</span></p>
+          <label class="sort"><span class="sr-only">商品排序</span><select v-model="sort" aria-label="商品排序"><option value="default">综合排序</option><option value="price-asc">价格从低到高</option><option value="price-desc">价格从高到低</option></select></label>
+        </div>
         <div v-if="status === 'loading'" class="product-grid skeleton-grid" aria-label="正在加载商品"><div v-for="n in 8" :key="n" class="product-card skeleton-card"><ElSkeleton animated :rows="4"/></div></div>
         <div v-else-if="status === 'error'" class="state-panel error-panel" role="alert"><div class="state-icon"><HardwareIcon name="alert"/></div><h1>商品加载失败</h1><p>{{ error }}</p><ElButton type="primary" @click="refresh">重新加载</ElButton></div>
         <div v-else-if="visibleProducts.length === 0" class="state-panel"><ElEmpty description="没有找到符合条件的商品"><ElButton type="primary" @click="resetFilters">清除筛选</ElButton></ElEmpty></div>
         <div v-else class="product-grid"><article v-for="product in visibleProducts" :key="product.id" class="product-card"><div class="product-image"><a :data-motherboard-platform="motherboardPlatform(product)" :href="`#product/${product.id}`" tabindex="-1" aria-hidden="true"><img :src="product.imageUrl" :alt="`${product.categoryLabel}品类示意图`" @error="imageFallback"/></a><span class="illustration-label">品类示意</span></div><div class="product-info"><h2 :title="product.name"><a :href="`#product/${product.id}`">{{ product.name }}</a></h2><p class="product-meta" :class="{ 'product-meta--specs': !showSummaryCategory(product.category) }"><template v-if="showSummaryCategory(product.category)"><span>{{ product.categoryLabel }}</span><span class="meta-dot">·</span></template>{{ product.summary }}</p><ProductPerformanceTags :tags="product.performanceTags" compact/><div class="product-bottom"><span class="product-price"><span class="currency-symbol">¥</span> {{ formatPrice(product.price) }}</span><span class="stock" :class="{ unavailable: product.stock === 0 }">{{ product.stock === 0 ? '暂时缺货' : `库存 ${product.stock} 件` }}</span></div></div></article></div>
         <p v-if="status === 'ready'" class="catalog-note">价格与库存仅供本机演示，非实时市场报价。<button @click="showDataNote = !showDataNote" :aria-expanded="showDataNote">{{ showDataNote ? '收起数据说明' : '查看数据说明' }} ↗</button></p>
-        <div v-if="showDataNote" class="data-note"><h2>关于演示数据</h2><p>商品型号来自公开资料。图片为本站绘制的品类示意图。价格和库存采用本地演示数据。</p><ul><li v-for="product in products" :key="product.id"><a :href="product.sourceUrl" target="_blank" rel="noopener noreferrer">{{ product.name }} · 型号资料</a></li></ul></div>
+        <div v-if="showDataNote" class="data-note"><h2>关于演示数据</h2><p>商品型号来自公开资料。图片为本站绘制的品类示意图。价格和库存采用本地演示数据。</p><ul><li v-for="product in data" :key="product.id"><a :href="product.sourceUrl" target="_blank" rel="noopener noreferrer">{{ product.name }} · 型号资料</a></li></ul></div>
       </section>
     </main>
     <ProductDetail v-if="detailId !== null" :id="detailId" :signed-in="signedIn" @close="closeDetail" @sign-in="openDetailSignIn"/>

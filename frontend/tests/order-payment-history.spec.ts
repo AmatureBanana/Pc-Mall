@@ -99,6 +99,7 @@ test('owner browses history, confirms simulated payment and safely retries a los
     await expect(detail).toContainText('待支付')
     await page.unroute(`**/api/orders/${second.orderNumber}/pay`)
     await dialog.getByRole('button', { name: '返回订单' }).click()
+    await page.getByRole('button', { name: '用户菜单', exact: true }).click()
     await page.getByRole('button', { name: '退出登录', exact: true }).click()
     await signIn(page)
     await page.getByRole('button', { name: '用户菜单', exact: true }).click()

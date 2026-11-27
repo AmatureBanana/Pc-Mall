@@ -3,6 +3,8 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
 const PASSWORD = 'ConfigPassword123!'
 const path = '/api/cart/configurations'
 const confirmation = (page: Page) => page.getByRole('dialog', { name: '转入购物车' })
+const transfer = (page: Page) => page.getByRole('button', { name: '转入购物车', exact: true })
+const transferError = (page: Page) => page.locator('.diy-actions').getByRole('alert')
 const cartPage = (page: Page) => page.getByRole('main', { name: '我的购物车' })
 
 async function write(api: APIRequestContext, target: string, data: unknown) {
@@ -23,7 +25,7 @@ async function signIn(page: Page, credentials: { username: string; password: str
   await dialog.getByLabel('用户名', { exact: true }).fill(credentials.username)
   await dialog.getByLabel('密码', { exact: true }).fill(credentials.password)
   await dialog.getByRole('button', { name: '登录', exact: true }).click()
-  await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '用户菜单', exact: true })).toBeVisible()
   await expect(dialog).not.toBeVisible()
 }
 
@@ -63,19 +65,18 @@ test('a partial configuration response is rejected and retry displays only the c
     body.data.configurations[0].items = body.data.configurations[0].items.filter((item: { category: string }) => item.category !== 'COOLER')
     await route.fulfill({ response: actual, json: body })
   })
-  await page.getByRole('button', { name: '转入购物车', exact: true }).click()
-  await confirmation(page).getByRole('button', { name: '确定', exact: true }).click()
-  await expect(confirmation(page).getByRole('alert')).toContainText('结果暂未确认')
+  await transfer(page).click()
+  await expect(transferError(page)).toContainText('结果暂未确认')
   await expect(page.getByText('装机方案已加入购物车', { exact: true })).toHaveCount(0)
-  await confirmation(page).getByRole('button', { name: '确定', exact: true }).click()
+  await transfer(page).click()
+  await expect(page).toHaveURL(/#cart$/)
   await expect(confirmation(page)).not.toBeVisible()
-  await page.getByRole('button', { name: /^购物车/ }).click()
   const group = cartPage(page).getByRole('region', { name: '装机方案 1' })
   await expect(group.getByRole('listitem')).toHaveCount(8)
   await expect(cartPage(page).getByRole('region', { name: '装机方案 2' })).toHaveCount(0)
 })
 
-test('guest signs in and explicitly confirms a seven-part build whose SKU and current price remain visible', async ({ page }) => {
+test('guest can cancel sign-in or resume transfer to the cart after login', async ({ page }) => {
   await page.goto('/')
   const credentials = await register(page)
   const original = await workspace(page, true)
@@ -83,33 +84,22 @@ test('guest signs in and explicitly confirms a seven-part build whose SKU and cu
   page.on('request', request => {
     if (new URL(request.url()).pathname === path && request.method() === 'POST') submissions.push(request.postDataJSON())
   })
-  await page.getByRole('button', { name: '转入购物车', exact: true }).click()
-  await expect(confirmation(page).getByRole('listitem')).toHaveCount(8)
-  await expect(confirmation(page)).toContainText('核显')
-  await confirmation(page).getByRole('button', { name: '前往登录', exact: true }).click()
-  await signIn(page, credentials)
+  await transfer(page).click()
+  await expect(page).toHaveURL(/#login$/)
+  await expect(confirmation(page)).not.toBeVisible()
+  await page.getByRole('dialog', { name: '统一登录' }).getByRole('button', { name: 'Close this dialog' }).click()
   await expect(page).toHaveURL(/#diy$/)
-  await expect(page.getByText('核心检测通过', { exact: true })).toBeVisible()
   expect(submissions).toEqual([])
-  expect((await (await page.request.get('/api/cart')).json()).data.configurations).toEqual([])
   expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!))).toEqual(original)
-  await page.getByRole('button', { name: '转入购物车', exact: true }).click()
-  await confirmation(page).getByRole('button', { name: '取消', exact: true }).click()
-  expect(submissions).toEqual([])
-  await page.getByRole('button', { name: '转入购物车', exact: true }).click()
-  await confirmation(page).getByRole('button', { name: '确定', exact: true }).click()
+  await transfer(page).click()
+  await signIn(page, credentials)
+  await expect(page).toHaveURL(/#cart$/)
   await expect(confirmation(page)).not.toBeVisible()
   expect(submissions).toHaveLength(1)
   expect(submissions[0]).toEqual({
     selections: original.selections.map(({ category, productId }) => ({ category, productId })),
     integratedGraphicsCpuId: original.integratedGraphicsCpuId,
-    confirmation: {
-      catalogVersion: expect.stringMatching(/^[a-f0-9]{64}$/),
-      unitPrices: Object.fromEntries(original.selections.map(({ category }) =>
-        [category, category === 'CPU' ? '1599.00' : expect.stringMatching(/^\d+\.\d{2}$/)])),
-    },
   })
-  await page.getByRole('button', { name: /^购物车/ }).click()
   const group = cartPage(page).getByRole('region', { name: '装机方案 1' })
   await expect(group.getByRole('listitem')).toHaveCount(7)
   await expect(group).toContainText('INTEL-I5-14600K')
@@ -135,14 +125,13 @@ test('a lost successful response keeps the outcome uncertain and retry creates n
     expect(committed.status()).toBe(200)
     await route.abort('connectionreset')
   })
-  await page.getByRole('button', { name: '转入购物车', exact: true }).click()
-  await confirmation(page).getByRole('button', { name: '确定', exact: true }).click()
-  await expect(confirmation(page).getByRole('alert')).toContainText('结果暂未确认')
+  await transfer(page).click()
+  await expect(transferError(page)).toContainText('结果暂未确认')
   await expect(page.getByText('装机方案已加入购物车', { exact: true })).toHaveCount(0)
   expect((await (await page.request.get('/api/cart')).json()).data.configurations).toHaveLength(1)
   expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!))).toEqual(original)
-  await confirmation(page).getByRole('button', { name: '确定', exact: true }).click()
-  await expect(confirmation(page)).not.toBeVisible()
+  await transfer(page).click()
+  await expect(page).toHaveURL(/#cart$/)
   expect(submissions).toHaveLength(2)
   expect(submissions[1]).toEqual(submissions[0])
   const persisted = (await (await page.request.get('/api/cart')).json()).data
@@ -151,7 +140,7 @@ test('a lost successful response keeps the outcome uncertain and retry creates n
   expect(await page.evaluate(() => JSON.parse(sessionStorage.getItem('pc-mall.diy.workspace.v1')!))).toMatchObject({ version: 1, selections: [] })
 })
 
-test('stock invalidated after confirmation opens refuses the whole build and preserves the workspace', async ({ page }) => {
+test('stock invalidated before transfer refuses the whole build and preserves the workspace', async ({ page }) => {
   const original = await signedInWorkspace(page)
   const { request } = await import('@playwright/test')
   const admin = await request.newContext({ baseURL: new URL(page.url()).origin })
@@ -177,11 +166,11 @@ test('stock invalidated after confirmation opens refuses the whole build and pre
     await page.evaluate(value => sessionStorage.setItem('pc-mall.diy.workspace.v1', JSON.stringify(value)), original)
     await page.reload()
     await expect(page.getByText('核心检测通过', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '转入购物车', exact: true }).click()
-    await expect(confirmation(page)).toContainText('配置组库存测试电源')
-    expect((await write(admin, `${productPath}/stock`, { delta: -1, reason: '确认后库存失效测试' })).status()).toBe(200)
-    await confirmation(page).getByRole('button', { name: '确定', exact: true }).click()
-    await expect(confirmation(page).getByRole('alert')).toContainText('整套配置未加入购物车')
+    await expect(transfer(page)).toBeEnabled()
+    expect((await write(admin, `${productPath}/stock`, { delta: -1, reason: '转入前库存失效测试' })).status()).toBe(200)
+    await transfer(page).click()
+    await expect(transferError(page)).toContainText('整套配置未加入购物车')
+    await expect(page).toHaveURL(/#diy$/)
     await expect(page.getByText('装机方案已加入购物车', { exact: true })).toHaveCount(0)
     const cart = (await (await page.request.get('/api/cart')).json()).data
     expect(cart.configurations).toEqual([])

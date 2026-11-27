@@ -23,7 +23,7 @@ async function signIn(page: Page, credentials: { username: string; password: str
   await dialog.getByLabel('用户名', { exact: true }).fill(credentials.username)
   await dialog.getByLabel('密码', { exact: true }).fill(credentials.password)
   await dialog.getByRole('button', { name: '登录', exact: true }).click()
-  await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '用户菜单', exact: true })).toBeVisible()
   await expect(dialog).not.toBeVisible()
 }
 

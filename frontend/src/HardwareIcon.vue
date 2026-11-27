@@ -26,6 +26,8 @@ defineProps<{ name: string }>()
     <g v-else-if="name === 'chevron-right'"><path d="m9 5 7 7-7 7"/></g>
     <g v-else-if="name === 'chevron-down'"><path d="m6 9 6 6 6-6"/></g>
     <g v-else-if="name === 'user'"><circle cx="12" cy="7" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2z"/></g>
+    <g v-else-if="name === 'login'"><path d="M14 4h5a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-5M3 12h12m-4-4 4 4-4 4"/></g>
+    <g v-else-if="name === 'logout'"><path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h5m1-8h9m-4-4 4 4-4 4"/></g>
     <g v-else-if="name === 'orders'"><rect x="4" y="3" width="16" height="19" rx="2"/><path d="M9 3V1h6v2M8 8h2m3 0h3M8 12h2m3 0h3M8 16h2m3 0h3"/></g>
     <g v-else-if="name === 'clock'"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 3"/></g>
     <g v-else-if="name === 'calendar'"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 2v6m10-6v6M3 11h18M7 15h2m4 0h2m-8 3h2"/></g>

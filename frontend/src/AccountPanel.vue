@@ -44,6 +44,7 @@ function escapeMenu(event: KeyboardEvent) {
 }
 /** Remembers that this sign-in started in the workspace and freezes what the user had seen. */
 function openAuth(target: 'login' | 'register') {
+  menuOpen.value = false
   authFlowRevision++
   beginWorkspaceSignIn(workspaceActive.value)
   navigate(target)
@@ -160,7 +161,7 @@ async function logout() {
   identityRevision++
   busy.value = true
   sessionError.value = ''
-  try { await writeAuth('logout', {}); user.value = null; signedIn.value = false; clearCart(); navigate(); notice.value = '已退出登录。' }
+  try { await writeAuth('logout', {}); menuOpen.value = false; user.value = null; signedIn.value = false; clearCart(); navigate(); notice.value = '已退出登录。' }
   catch (cause) { sessionError.value = cause instanceof Error ? cause.message : '退出失败，请重试。' }
   finally { busy.value = false }
 }
@@ -192,28 +193,31 @@ onUnmounted(() => { window.removeEventListener('hashchange', syncRoute); window.
 </script>
 
 <template>
-  <div class="account-bar"><div class="page-width account-bar-inner">
-    <span class="account-welcome">欢迎来到装机猫</span>
-    <template v-if="!user"><button @click="openAuth('login')">登录</button><button @click="openAuth('register')">注册</button></template>
-    <button v-if="user?.role === 'ADMIN'" @click="navigate('admin')">管理后台</button>
-    <button v-if="user" :disabled="busy || profileBusy" @click="logout">退出登录</button>
-    <span v-if="sessionError" role="alert" class="account-session-error">{{ sessionError }} <button @click="checkSession">重试</button></span>
-    <span v-else-if="notice && !authOpen" role="status">{{ notice }}</span>
-  </div></div>
-
   <Teleport to="#header-account" defer>
-    <div v-if="user" ref="menuElement" class="user-menu">
-      <button ref="menuTrigger" type="button" class="user-menu-trigger" aria-label="用户菜单" :aria-expanded="menuOpen" aria-controls="user-menu-links" @click="menuOpen = !menuOpen">
-        <UserAvatar/><span class="account-name" :title="user.nickname">用户 {{ user.nickname || user.username }}</span><HardwareIcon name="chevron-down"/>
+    <div ref="menuElement" class="user-menu">
+      <button ref="menuTrigger" type="button" class="user-menu-trigger" :aria-label="user ? '用户菜单' : '游客用户菜单'" :aria-expanded="menuOpen" aria-controls="user-menu-links" @click="menuOpen = !menuOpen">
+        <UserAvatar/><span class="account-name" :title="user?.nickname">{{ user ? '用户 ' + (user.nickname || user.username) : '游客用户' }}</span><HardwareIcon name="chevron-down"/>
       </button>
-      <nav v-if="menuOpen" id="user-menu-links" class="user-menu-links" aria-label="用户功能">
-        <a v-for="entry in accountNavigation" :key="entry.route" :href="`#${entry.route}`" @click="menuOpen = false"><HardwareIcon :name="entry.icon"/>{{ entry.label }}</a>
-      </nav>
+      <div v-if="menuOpen || sessionError || (notice && !authOpen)" class="user-menu-popover">
+        <nav v-if="menuOpen" id="user-menu-links" class="user-menu-links" aria-label="用户功能">
+          <template v-if="user">
+            <a v-for="entry in accountNavigation" :key="entry.route" :href="`#${entry.route}`" @click="menuOpen = false"><HardwareIcon :name="entry.icon"/>{{ entry.label }}</a>
+            <button v-if="user.role === 'ADMIN'" type="button" @click="navigate('admin')"><HardwareIcon name="shield"/>管理后台</button>
+            <button type="button" :disabled="busy || profileBusy" @click="logout"><HardwareIcon name="logout"/>退出登录</button>
+          </template>
+          <template v-else>
+            <button type="button" @click="openAuth('login')"><HardwareIcon name="login"/>登录</button>
+            <button type="button" @click="openAuth('register')"><HardwareIcon name="user"/>注册</button>
+          </template>
+        </nav>
+        <p v-if="sessionError" role="alert" class="user-menu-feedback auth-error">{{ sessionError }} <button type="button" @click="checkSession">重试</button></p>
+        <p v-else-if="notice && !authOpen" role="status" class="user-menu-feedback auth-success">{{ notice }}</p>
+      </div>
     </div>
   </Teleport>
 
   <ElDialog :model-value="authOpen" :title="route === 'register' ? '注册账户' : '统一登录'" width="440px" class="auth-dialog" :close-on-click-modal="false" @close="authOpen && closeAuth()">
-    <p class="auth-intro">{{ route === 'register' ? '创建普通账户，开始你的装机之旅。' : '普通用户与管理员使用同一入口。' }}</p>
+    <p v-if="route === 'register'" class="auth-intro">创建普通账户，开始你的装机之旅。</p>
     <p v-if="notice" role="status" class="auth-success">{{ notice }}</p>
     <p v-if="error" role="alert" class="auth-error">{{ error }}</p>
     <form class="auth-form" @submit.prevent="submit">

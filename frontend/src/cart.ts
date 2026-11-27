@@ -279,7 +279,7 @@ async function remove(itemId: number): Promise<boolean> {
   } catch (cause) { failure(request, cause, '移除失败，请重试。'); return false }
 }
 
-async function addConfiguration(workspace: Workspace, confirmation: { unitPrices: Record<string, string>; catalogVersion: string }) {
+async function addConfiguration(workspace: Workspace) {
   const request = beginAction()
   try {
     const value = parse(await write('/api/cart/configurations', {
@@ -287,7 +287,6 @@ async function addConfiguration(workspace: Workspace, confirmation: { unitPrices
       integratedGraphicsCpuId: workspace.integratedGraphicsCpuId,
       memoryQuantity: workspace.memoryQuantity,
       origin: workspace.origin,
-      confirmation,
     }, 'POST', request.signal))
     if (!current(request)) return 'failed'
     success(request, value, '装机方案已加入购物车。')

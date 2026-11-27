@@ -35,6 +35,13 @@ class ProductCatalogTest {
             assertThat(products).isNotEmpty();
             for (JsonNode product : products) {
                 assertThat(product.path("category").asText()).isEqualTo(category);
+                if (product.path("sku").asText().equals("SAMSUNG-MZ-V9P1T0BW"))
+                    assertThat(product.path("capacityGb").asInt()).isEqualTo(1000);
+                if (product.path("sku").asText().equals("DEEPCOOL-AK400"))
+                    assertThat(product.path("summary").asText()).isEqualTo("风冷散热器 · 120mm风扇");
+                if (product.path("sku").asText().equals("CORSAIR-CP-9020295"))
+                    assertThat(product.path("ratedPowerWatts").asInt()).isEqualTo(750);
+                if (category.equals("CPU")) assertThat(product.has("capacityGb")).isFalse();
                 if (category.equals("GPU")) assertThat(product.path("categoryLabel").asText()).isEqualTo("显卡");
             }
         }
@@ -47,6 +54,13 @@ class ProductCatalogTest {
         JsonNode matches = json.readTree(response.body()).path("data");
         assertThat(matches.size()).isEqualTo(1);
         assertThat(matches.get(0).path("sku").asText()).isEqualTo("KINGSTON-KF560C36BBE2-16");
+        for (String term : new String[]{"4800%20mt%2Fs", "4800MT%2Fs"}) {
+            var parameterMatch = ProductBrowserTest.get(app, "/api/products?category=MEMORY&keyword=" + term);
+            assertThat(parameterMatch.statusCode()).isEqualTo(200);
+            JsonNode byParameter = json.readTree(parameterMatch.body()).path("data");
+            assertThat(byParameter.size()).isEqualTo(1);
+            assertThat(byParameter.get(0).path("sku").asText()).isEqualTo("KINGSTON-KF560C36BBE2-16");
+        }
         for (String query : new String[]{"category=CPU&keyword=Kingston", "keyword=no-such-product", "keyword=%25", "keyword=%27%20OR%201%3D1--"}) {
             var empty = ProductBrowserTest.get(app, "/api/products?" + query);
             assertThat(empty.statusCode()).isEqualTo(200);
@@ -62,6 +76,7 @@ class ProductCatalogTest {
         JsonNode detail = json.readTree(response.body()).path("data");
         assertThat(detail.path("product")).isEqualTo(memory);
         assertThat(detail.path("description").asText()).contains("单根");
+        assertThat(memory.path("capacityGb").asInt()).isEqualTo(16);
         assertThat(parameter(detail, "totalCapacity").path("value").asInt()).isEqualTo(16);
         assertThat(parameter(detail, "totalCapacity").path("unit").asText()).isEqualTo("GB");
         assertThat(parameter(detail, "stickCount").path("value").asInt()).isEqualTo(1);

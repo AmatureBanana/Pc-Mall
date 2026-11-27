@@ -294,7 +294,6 @@ async function removeRows(all: boolean) {
         </dl>
         <p v-if="invalidSelected" class="cart-problem">{{ invalidSelected }} 项当前不可售，未计入合计。</p>
         <ElButton class="cart-checkout" type="primary" :disabled="!selected.size || loading || operationBusy || quoteBusy || orderBusy" @click="checkQuote()"><HardwareIcon name="card"/>结算订单</ElButton>
-        <p class="cart-summary-note">点击后自动核验选中项，创建待支付订单并预占库存，随后进入订单结果页。</p>
         <button type="button" class="cart-text-button" :disabled="loading || operationBusy" @click="refresh">刷新价格与库存</button>
       </aside>
     </div>

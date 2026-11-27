@@ -165,4 +165,7 @@ test('configuration summaries show only key parts by default and expanded parts 
     /Intel Core i5-14600K/, /利民 PA120/, /华硕 TUF/, /金士顿 FURY/, /NVIDIA GeForce RTX 4060/,
     /西数 WD_BLACK/, /美商海盗船/, /侧透 ATX/,
   ])
+  await expect(detail.locator('tbody tr > td:nth-child(2)')).toHaveText([
+    /\/ CPU$/, /\/ CPU散热器$/, /\/ 主板$/, /\/ 内存$/, /\/ 显卡$/, /\/ 硬盘$/, /\/ 电源$/, /\/ 机箱$/,
+  ])
 })

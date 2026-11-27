@@ -64,7 +64,8 @@ async function registerUser(page: Page) {
 }
 
 async function openSignIn(page: Page) {
-  await page.getByRole('button', { name: '登录', exact: true }).click()
+  await page.getByRole('button', { name: '游客用户菜单', exact: true }).click()
+  await page.getByRole('navigation', { name: '用户功能' }).getByRole('button', { name: '登录', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '统一登录' })
   await expect(dialog).toBeVisible()
   return dialog
@@ -215,7 +216,7 @@ test('a failed or cancelled sign-in keeps the guest configuration and adds nothi
   await expect(configuration(page)).toContainText('已选择 1 / 8 项')
   await expect(configuration(page).getByLabel('当前参考总价')).toHaveText('¥1,499.00')
   await expect(restoration(page)).toHaveCount(0)
-  await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '游客用户菜单', exact: true })).toBeVisible()
   expect(purchases).toEqual([])
 })
 
@@ -275,8 +276,9 @@ test('an off-sale or out-of-stock reference is reported after restoration instea
     await expect(configuration(page)).toContainText('配置存在问题')
 
     // The same workspace keeps the reference and now reports the stock change.
+    await page.getByRole('button', { name: '用户菜单', exact: true }).click()
     await page.getByRole('button', { name: '退出登录' }).click()
-    await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '游客用户菜单', exact: true })).toBeVisible()
     expect((await admin.post(`${fixture.path}/status`, { revision: (await admin.detail(fixture.path)).revision, status: 'ON_SALE' })).status()).toBe(200)
     expect((await admin.post(`${fixture.path}/stock`, { delta: -5, reason: '登录恢复缺货验证' })).status()).toBe(200)
     await page.goto('/#diy')
@@ -533,7 +535,8 @@ test('registering from the workspace preserves the same flow through login', asy
   await page.goto('/#diy')
   await page.getByRole('button', { name: '选择 Intel Core i5-14600KF', exact: true }).click()
   await waitForSeenSnapshot(page, 1)
-  await page.getByRole('button', { name: '注册', exact: true }).click()
+  await page.getByRole('button', { name: '游客用户菜单', exact: true }).click()
+  await page.getByRole('navigation', { name: '用户功能' }).getByRole('button', { name: '注册', exact: true }).click()
   const registration = page.getByRole('dialog', { name: '注册账户' })
   const username = `ui${Date.now().toString(36)}`
   await registration.getByLabel('用户名', { exact: true }).fill(username)

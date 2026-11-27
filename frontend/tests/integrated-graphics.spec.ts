@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('7800X3D integrated build has verified power and can enter cart confirmation', async ({ page }) => {
+test('7800X3D integrated build has verified power and can start cart transfer', async ({ page }) => {
   await page.goto('/')
   const products = (await (await page.request.get('/api/products')).json()).data as { id: number; sku: string }[]
   const memory = products.find(item => item.sku === 'KINGSTON-KF560C36BBE2-16')!.id
@@ -16,9 +16,8 @@ test('7800X3D integrated build has verified power and can enter cart confirmatio
   await expect(configuration.getByText('核心检测通过', { exact: true })).toBeVisible()
   await expect(configuration).not.toContainText('存在未知参数')
   await configuration.getByRole('button', { name: '转入购物车', exact: true }).click()
-  const confirmation = page.getByRole('dialog', { name: '转入购物车' })
-  await expect(confirmation).toContainText('AMD Ryzen 7 7800X3D')
-  await expect(confirmation.getByRole('button', { name: '前往登录', exact: true })).toBeEnabled()
+  await expect(page).toHaveURL(/#login$/)
+  await expect(page.getByRole('dialog', { name: '统一登录' })).toBeVisible()
   await page.screenshot({ path: test.info().outputPath('amd-integrated-power-verified.png'), fullPage: true, animations: 'disabled' })
 })
 

@@ -18,7 +18,21 @@ interface ProductMapper {
             WHERE p.status = 'ON_SALE'
               AND (#{category} IS NULL OR p.category = #{category})
               AND (LOCATE(#{keyword}, CONCAT_WS(' ', p.name, p.brand, p.model, p.sku, p.summary)) > 0
-                   OR LOCATE(#{manufacturerKeyword}, CONCAT_WS(' ', p.name, p.brand, p.model, p.sku, p.summary)) > 0)
+                   OR LOCATE(#{manufacturerKeyword}, CONCAT_WS(' ', p.name, p.brand, p.model, p.sku, p.summary)) > 0
+                   OR EXISTS (
+                       SELECT 1
+                       FROM product_specifications s
+                       CROSS JOIN JSON_TABLE(s.parameters, '$[*]' COLUMNS (
+                           parameter_label VARCHAR(128) PATH '$.label',
+                           parameter_value JSON PATH '$.value',
+                           parameter_unit VARCHAR(32) PATH '$.unit'
+                       )) spec
+                       WHERE s.product_id = p.id AND spec.parameter_value IS NOT NULL
+                         AND (LOCATE(#{keyword}, CONCAT_WS(' ', spec.parameter_label, JSON_UNQUOTE(spec.parameter_value),
+                                                           NULLIF(spec.parameter_unit, '')) COLLATE utf8mb4_0900_ai_ci) > 0
+                              OR LOCATE(#{keyword}, CONCAT(JSON_UNQUOTE(spec.parameter_value),
+                                                           COALESCE(spec.parameter_unit, '')) COLLATE utf8mb4_0900_ai_ci) > 0)
+                   ))
             ORDER BY p.id
             """)
     List<Product> findOnSale(String category, String keyword, String manufacturerKeyword);

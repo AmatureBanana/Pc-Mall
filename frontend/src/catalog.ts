@@ -12,13 +12,16 @@ export const categories = [
   { code: 'CASE', label: '机箱', icon: 'case' },
 ] as const
 export type Category = typeof categories[number]['code']
+export const categoryName = (category: string) => categories.find(item => item.code === category)?.label ?? category
 export interface ProductIdentity {
   id: number; sku: string; name: string; category: Exclude<Category, 'ALL'>; categoryLabel: string
   brand: string; model: string; summary: string; imageUrl: string; price: string; stock: number
   sourceUrl: string; priceNote: string; revision: number
 }
 export type ProductPlatform = 'AMD' | 'Intel' | 'NVIDIA'
-export interface Product extends ProductIdentity { performanceTags: PerformanceTag[]; platform?: ProductPlatform }
+export interface Product extends ProductIdentity {
+  performanceTags: PerformanceTag[]; platform?: ProductPlatform; capacityGb?: number; ratedPowerWatts?: number
+}
 export function motherboardPlatform(product: Product): 'Intel' | 'AMD' | undefined {
   if (product.category === 'MOTHERBOARD' && (product.platform === 'Intel' || product.platform === 'AMD')) return product.platform
 }
@@ -47,6 +50,8 @@ function isProduct(value: unknown): value is Product {
   return isProductIdentity(value) && 'performanceTags' in value && Array.isArray(value.performanceTags)
     && value.performanceTags.length > 0 && value.performanceTags.every(isPerformanceTag)
     && (!('platform' in value) || value.platform === 'AMD' || value.platform === 'Intel' || value.platform === 'NVIDIA')
+    && (!('capacityGb' in value) || typeof value.capacityGb === 'number' && Number.isFinite(value.capacityGb) && value.capacityGb > 0)
+    && (!('ratedPowerWatts' in value) || typeof value.ratedPowerWatts === 'number' && Number.isFinite(value.ratedPowerWatts) && value.ratedPowerWatts > 0)
 }
 export async function loadProducts(signal: AbortSignal, category: Category = 'ALL', keyword = ''): Promise<Product[]> {
   const query = new URLSearchParams()

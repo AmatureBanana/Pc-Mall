@@ -4,10 +4,11 @@ import { ElButton, ElDialog, ElEmpty, ElMessage, ElSkeleton } from 'element-plus
 import HardwareIcon from './HardwareIcon.vue'
 import ProductPerformanceTags from './ProductPerformanceTags.vue'
 import ScoreDisplay from './ScoreDisplay.vue'
-import { formatPrice, formatParameter, imageFallback, loadProduct, loadProducts, motherboardPlatform, type ProductPlatform } from './catalog'
+import { formatPrice, formatParameter, imageFallback, loadProduct, loadProducts, motherboardPlatform } from './catalog'
 import { describeRestoration, hardwareCategories, hardwareDisplayOrder, hardwareLabels, isDiyAssessment,
   isManualWorkspace, seenSnapshot, type HardwareCategory, type SeenSnapshot } from './diy'
 import { useCatalogRequest } from './useCatalogRequest'
+import { useProductFilters } from './useProductFilters'
 import { useDiyWorkspace } from './useDiyWorkspace'
 import { signedIn } from './auth'
 import { useCart } from './cart'
@@ -18,13 +19,12 @@ const emit = defineEmits<{ 'session-expired': [] }>()
 const activeCategory = ref<HardwareCategory>('CPU')
 const searchInput = ref('')
 const keyword = ref('')
-const brand = ref('')
-const platform = ref<ProductPlatform | ''>('')
 const sort = ref('default')
 const candidateList = ref<HTMLDivElement | null>(null)
 const clearOpen = ref(false)
 const transferOpen = ref(false)
 const transferring = ref(false)
+const transferError = ref('')
 const { addConfiguration, error: cartError, editing, cancelEdit, replaceConfiguration } = useCart()
 const { workspace, storageWarning, count, select, selectIntegratedGraphics, remove, clear, load,
   memoryQuantity, memorySlots, memoryLimit, setMemoryQuantity,
@@ -97,19 +97,10 @@ const { data: products, status, error, refresh } = useCatalogRequest(
 const displayCategories = hardwareDisplayOrder.map(code => hardwareCategories.find(item => item.code === code)!)
 const labels: Record<HardwareCategory, string> = hardwareLabels
 const activeLabel = computed(() => labels[activeCategory.value])
-const platforms = computed<ProductPlatform[]>(() => {
-  if (activeCategory.value === 'MOTHERBOARD') return ['Intel', 'AMD']
-  if (activeCategory.value === 'GPU') return ['NVIDIA', 'AMD', 'Intel']
-  return []
-})
-const platformProducts = computed(() => (products.value ?? []).filter(product => !platform.value || product.platform === platform.value))
-const brands = computed(() => [...new Set(platformProducts.value.map(product => product.brand))])
-function selectPlatform(value: ProductPlatform | '') {
-  platform.value = value
-  if (!brands.value.includes(brand.value)) brand.value = ''
-}
+const { brand, platform, brands, platforms, capacity, capacities, ratedPower, ratedPowers,
+  filteredProducts, selectPlatform } = useProductFilters(products, activeCategory)
 const candidates = computed(() => {
-  const items = platformProducts.value.filter(product => !brand.value || product.brand === brand.value)
+  const items = [...filteredProducts.value]
   if (sort.value === 'price-asc') items.sort((a, b) => Number(a.price) - Number(b.price) || a.id - b.id)
   if (sort.value === 'price-desc') items.sort((a, b) => Number(b.price) - Number(a.price) || a.id - b.id)
   return items
@@ -226,7 +217,11 @@ function search() {
   if (keyword.value === next) void refresh()
   else keyword.value = next
 }
-function resetFilters() { searchInput.value = keyword.value = brand.value = platform.value = ''; void refresh() }
+function resetFilters() {
+  searchInput.value = keyword.value = brand.value = platform.value = capacity.value = ''
+  ratedPower.value = null
+  void refresh()
+}
 function clearConfiguration() {
   clear()
   clearOpen.value = false
@@ -236,33 +231,49 @@ function clearConfiguration() {
 }
 function openTransfer() {
   if (!canTransfer.value || transferring.value) return
+  if (!editing.value) {
+    void transferConfiguration()
+    return
+  }
   cartError.value = ''
   transferOpen.value = true
 }
-async function confirmTransfer() {
-  const catalogVersion = check.value?.catalogVersion
-  if (!canTransfer.value || transferring.value || !catalogVersion) return
+async function transferConfiguration() {
+  if (!canTransfer.value || transferring.value || editing.value) return
+  transferError.value = ''
   if (!signedIn.value) {
-    transferOpen.value = false
-    beginWorkspaceSignIn(true, { resumeCart: workspace.value.origin === 'RECOMMENDATION' })
+    beginWorkspaceSignIn(true, { resumeCart: true })
     window.location.hash = 'login'
     return
   }
+  const submitted = workspace.value
+  const route = window.location.hash
   transferring.value = true
   try {
-    const replacing = Boolean(editing.value)
-    const result = replacing ? (await replaceConfiguration(workspace.value) ? 'added' : 'failed')
-      : await addConfiguration(workspace.value, { catalogVersion, unitPrices: unitPrices.value })
+    const result = await addConfiguration(submitted)
     if (result === 'added') {
-      transferOpen.value = false
-      if (!replacing) clearConfiguration()
-      ElMessage.success(replacing ? '装机方案已整组替换' : '装机方案已加入购物车')
-    } else if (result === 'revalidate') {
-      void refreshQuote()
-      void refreshCheck()
+      if (workspace.value === submitted) clearConfiguration()
+      if (window.location.hash === route) window.location.hash = 'cart'
+      ElMessage.success('装机方案已加入购物车')
     } else if (result === 'sign-in') {
       emit('session-expired')
-      cartError.value = '登录已过期，请重新登录后继续操作。'
+      transferError.value = '登录已过期，请重新登录后继续操作。'
+    } else {
+      transferError.value = cartError.value
+      if (result === 'revalidate') {
+        void refreshQuote()
+        void refreshCheck()
+      }
+    }
+  } finally { transferring.value = false }
+}
+async function saveConfigurationEdit() {
+  if (!canTransfer.value || transferring.value || !editing.value) return
+  transferring.value = true
+  try {
+    if (await replaceConfiguration(workspace.value)) {
+      transferOpen.value = false
+      ElMessage.success('装机方案已整组替换')
     }
   } finally { transferring.value = false }
 }
@@ -281,13 +292,11 @@ const restoredSummary = computed(() => {
 watch(restoration, state => {
   if (state.phase !== 'ready') return
   void refresh()
-  if (state.resumeCart && signedIn.value && canTransfer.value) {
-    cartError.value = ''
-    transferOpen.value = true
-  }
+  if (state.resumeCart && window.location.hash === '#diy') void transferConfiguration()
 })
 watch(activeCategory, () => {
-  searchInput.value = keyword.value = brand.value = platform.value = ''
+  searchInput.value = keyword.value = brand.value = platform.value = capacity.value = ''
+  ratedPower.value = null
   sort.value = 'default'
   candidateList.value?.scrollTo({ top: 0 })
   void refresh()
@@ -312,7 +321,7 @@ onMounted(() => { void refresh() })
       <p v-if="restoration.phase === 'running'" class="restoration-note">正在按服务端当前数据重新读取已恢复的工作区…</p>
       <template v-else-if="restoration.phase === 'ready' && restoredSummary">
         <p class="restoration-note">已恢复登录前的工作区：{{ restoredSummary.restored }} 项商品引用、来源与修订 {{ workspace.revision }} 均已保留。
-          商品、价格、库存与参数均为服务端当前数据，本次恢复不会自动加入购物车或下单。</p>
+          商品、价格、库存与参数均为服务端当前数据<span v-if="!restoration.resumeCart">，本次恢复不会自动加入购物车或下单</span>。</p>
         <ul v-if="restoredSummary.changes.length" class="restoration-changes" aria-label="登录恢复发现的商品变化">
           <li v-for="change in restoredSummary.changes" :key="change.category + change.kind">{{ change.message }}</li>
         </ul>
@@ -375,7 +384,6 @@ onMounted(() => { void refresh() })
           <div class="diy-configuration-body">
             <div class="diy-total" aria-live="polite">
               <div><strong>当前参考总价：</strong><b v-if="quoteStatus === 'ready' && quote?.total !== null" aria-label="当前参考总价">¥{{ formatPrice(quote!.total!) }}</b><b v-else class="pending-total" aria-label="当前参考总价">{{ quoteStatus === 'loading' ? '正在核价…' : quoteStatus === 'error' ? '报价暂不可用' : '配置存在问题' }}</b></div>
-              <p>仅为当前配置的商品合计参考价，<br/>不代表最终成交价</p>
             </div>
             <p v-if="quoteStatus === 'ready' && quote?.total === null" class="diy-warning" role="alert">部分选择不可售，请替换或移除。可售项小计 ¥{{ formatPrice(quote.validSubtotal) }}，不是完整配置报价。</p>
             <p v-if="quoteStatus === 'error'" class="diy-warning" role="alert">{{ quoteError }}</p>
@@ -426,8 +434,9 @@ onMounted(() => { void refresh() })
               <details v-if="check" class="verification-note" aria-label="检测记录"><summary>检测记录</summary><p>修订 {{ check.revision }} · 规则 {{ check.ruleVersion }}<br/>参数版本 {{ check.catalogVersion.slice(0, 12) }} · {{ checkedTime }}（北京时间）</p></details>
             </section>
             <div class="diy-actions">
+              <p v-if="!editing && transferError" class="auth-error" role="alert">{{ transferError }}</p>
               <p v-if="!editing" class="diy-save-note" role="status">{{ storageWarning ? '配置尚未保存，当前页面仍可继续编辑。' : '方案保存在当前标签页，刷新后可继续编辑。' }}</p>
-              <div><ElButton v-if="editing" :disabled="transferring" @click="cancelEdit">取消整组编辑</ElButton><ElButton v-else :disabled="!count" aria-label="清空配置" @click="clearOpen = true"><HardwareIcon name="reset"/>重置配置</ElButton><ElButton type="primary" :disabled="!canTransfer || transferring" @click="openTransfer"><HardwareIcon name="layers"/>{{ editing ? '保存整组修改' : '转入购物车' }}</ElButton></div>
+              <div><ElButton v-if="editing" :disabled="transferring" @click="cancelEdit">取消整组编辑</ElButton><ElButton v-else :disabled="!count || transferring" aria-label="清空配置" @click="clearOpen = true"><HardwareIcon name="reset"/>重置配置</ElButton><ElButton type="primary" :disabled="!canTransfer || transferring" :loading="!editing && transferring" @click="openTransfer"><HardwareIcon name="layers"/>{{ editing ? '保存整组修改' : '转入购物车' }}</ElButton></div>
             </div>
           </div>
         </section>
@@ -436,14 +445,24 @@ onMounted(() => { void refresh() })
       <section class="diy-panel diy-candidates" aria-label="候选商品" :aria-busy="status === 'loading'">
         <div class="diy-panel-heading"><div class="diy-title-row"><h2><span>②</span> 候选商品（{{ activeLabel }}）</h2><span class="candidate-count">{{ status === 'ready' ? '共 ' + (candidates.length + (activeCategory === 'GPU' && integratedGraphics ? 1 : 0)) + ' 件' : '加载中' }}</span></div><p>从下方选择一款，{{ activeCategory === 'GPU' ? '支持核显或独立显卡，' : '' }}支持任意顺序选择、替换或移除</p></div>
         <div class="diy-filters">
-          <div v-if="platforms.length" class="diy-brands" role="group" aria-label="平台">
+          <div v-if="platforms.length" class="product-filter-options" role="group" aria-label="平台">
             <span>平台：</span>
-            <button :class="{ active: !platform }" :aria-pressed="!platform" @click="selectPlatform('')">全部</button>
-            <button v-for="item in platforms" :key="item" :class="{ active: platform === item }" :aria-pressed="platform === item"
+            <button :aria-pressed="!platform" @click="selectPlatform('')">全部</button>
+            <button v-for="item in platforms" :key="item" :aria-pressed="platform === item"
               @click="selectPlatform(item)">{{ item }}</button>
           </div>
-          <div class="diy-brands" role="group" aria-label="品牌"><span>品牌：</span><button :class="{ active: !brand }" :aria-pressed="!brand" @click="brand = ''">全部</button><button v-for="item in brands" :key="item" :class="{ active: brand === item }" :aria-pressed="brand === item" @click="brand = item">{{ item }}</button></div>
-          <div class="diy-search-row"><label>排序：<select v-model="sort" aria-label="候选商品排序"><option value="default">综合排序</option><option value="price-asc">价格从低到高</option><option value="price-desc">价格从高到低</option></select></label><form @submit.prevent="search"><HardwareIcon name="search"/><input v-model="searchInput" aria-label="搜索当前类别商品" placeholder="在当前类别中搜索型号或参数" maxlength="100"/><button type="submit" aria-label="搜索候选商品">搜索</button></form></div>
+          <div class="product-filter-options" role="group" aria-label="品牌"><span>品牌：</span><button :aria-pressed="!brand" @click="brand = ''">全部</button><button v-for="item in brands" :key="item" :aria-pressed="brand === item" @click="brand = item">{{ item }}</button></div>
+          <div v-if="capacities.length" class="product-filter-options" role="group" aria-label="容量">
+            <span>容量：</span>
+            <button :aria-pressed="!capacity" @click="capacity = ''">全部</button>
+            <button v-for="item in capacities" :key="item" :aria-pressed="capacity === item" @click="capacity = item">{{ item }}</button>
+          </div>
+          <div v-if="ratedPowers.length" class="product-filter-options" role="group" aria-label="额定功率">
+            <span>额定功率：</span>
+            <button :aria-pressed="ratedPower === null" @click="ratedPower = null">全部</button>
+            <button v-for="watts in ratedPowers" :key="watts" :aria-pressed="ratedPower === watts" @click="ratedPower = watts">{{ watts }}W</button>
+          </div>
+          <div class="diy-search-row"><label>排序：<select v-model="sort" aria-label="候选商品排序"><option value="default">综合排序</option><option value="price-asc">价格从低到高</option><option value="price-desc">价格从高到低</option></select></label><form class="product-list-search" @submit.prevent="search"><HardwareIcon name="search"/><input v-model="searchInput" aria-label="搜索当前类别商品" placeholder="在当前类别中搜索型号或参数" maxlength="100"/><button type="submit" aria-label="搜索候选商品">搜索</button></form></div>
         </div>
         <div ref="candidateList" class="diy-candidate-list">
           <p v-if="activeCategory === 'GPU' && integratedSelected && !integratedGraphics && cpuDetails.status.value === 'ready' && quoteStatus === 'ready'" class="diy-warning" role="alert">当前 CPU 核显不可用，请移除核显选择或更换 CPU / 独立显卡。</p>
@@ -483,13 +502,12 @@ onMounted(() => { void refresh() })
           <div v-else-if="status === 'error'" class="diy-empty" role="alert"><HardwareIcon name="alert"/><h3>候选商品加载失败</h3><p>{{ error }}</p><ElButton type="primary" @click="refresh">重新加载候选商品</ElButton></div>
           <ElEmpty v-else-if="!listedCandidates.length" description="没有找到符合条件的商品"><ElButton @click="resetFilters">清除候选筛选</ElButton></ElEmpty>
         </div>
-        <p class="diy-candidate-note">图片为品类示意，价格与库存为商城实际数据</p>
       </section>
     </div>
     <ElDialog v-model="clearOpen" title="清空当前配置？" width="420px" align-center :close-on-click-modal="false"><p>将移除本标签页的全部已选硬件。取消可继续编辑。</p><template #footer><ElButton @click="clearOpen = false">取消</ElButton><ElButton type="danger" @click="clearConfiguration">确认清空</ElButton></template></ElDialog>
-    <ElDialog v-model="transferOpen" :title="editing ? '保存整组修改' : '转入购物车'" width="min(720px, calc(100vw - 32px))" align-center
+    <ElDialog v-model="transferOpen" title="保存整组修改" width="min(720px, calc(100vw - 32px))" align-center
       :close-on-click-modal="false" :show-close="!transferring" :close-on-press-escape="!transferring">
-      <p class="transfer-intro">{{ editing ? '请核对配件。确认后原子替换原组；冲突或失败保留原组。' : signedIn ? '请核对配件。确认后将整套方案加入购物车。' : '请先登录。登录后会返回当前方案，你可以再确认加入购物车。' }}</p>
+      <p class="transfer-intro">请核对配件。确认后原子替换原组；冲突或失败保留原组。</p>
       <section class="transfer-preview" aria-label="待加入的装机方案">
         <strong>当前装机方案</strong><span> · {{ totalUnits }} 件配件</span>
         <ul><li v-for="category in transferCategories" :key="category.code">
@@ -515,7 +533,7 @@ onMounted(() => { void refresh() })
       <p v-else-if="quote?.total === null" class="auth-error" role="alert">{{ quote.items.find(item => item.state !== 'VALID')?.message }}</p>
       <p v-else-if="!check?.corePassed" class="auth-error" role="alert">{{ storyState }}，请返回 DIY 查看兼容分项诊断。</p>
       <p v-else-if="memoryQuantityTooHigh" class="auth-error" role="alert">请调低内存数量或更换主板后再转入购物车。</p>
-      <template #footer><ElButton :disabled="transferring" @click="transferOpen = false">取消</ElButton><ElButton type="primary" :loading="transferring" :disabled="!canTransfer" @click="confirmTransfer">{{ signedIn ? '确定' : '前往登录' }}</ElButton></template>
+      <template #footer><ElButton :disabled="transferring" @click="transferOpen = false">取消</ElButton><ElButton type="primary" :loading="transferring" :disabled="!canTransfer" @click="saveConfigurationEdit">确定</ElButton></template>
     </ElDialog>
   </main>
 </template>
@@ -578,17 +596,10 @@ onMounted(() => { void refresh() })
 .memory-quantity { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 10px 8px; color: #4b6a9b; font-size: 11px; }
 .diy-category-note { margin: auto 10px 0; padding: 18px 0 24px; font-size: 12px; color: #53658a; text-align: center; line-height: 1.8; }
 .diy-filters { padding: 17px 16px 14px; display: grid; gap: 15px; font-size: 13px; }
-.diy-brands { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-.diy-brands > span { font-weight: 600; }
-.diy-brands button { border: 1px solid #dfe6f4; border-radius: 6px; background: #fff; padding: 5px 12px; font-size: 12px; }
-.diy-brands button.active { background: #0760ff; border-color: #0760ff; color: #fff; box-shadow: 0 2px 4px #0968fa15; }
 .diy-search-row { display: flex; align-items: center; gap: 18px; justify-content: space-between; }
 .diy-search-row label { white-space: nowrap; font-weight: 600; font-size: 12px; }
 .diy-search-row select { border: 1px solid #dce3f0; border-radius: 6px; color: #1f3152; background: #fff; padding: 7px 9px; max-width: 125px; font-size: 12px; }
-.diy-search-row form { display: flex; align-items: center; border: 1px solid #dce3f0; border-radius: 6px; padding: 0 9px; min-width: 0; height: 34px; flex: 1; max-width: 325px; }
-.diy-search-row form svg { width: 16px; height: 16px; flex-shrink: 0; color: #60749f; }
-.diy-search-row input { border: 0; outline: 0; background: transparent; padding: 4px 6px; width: 100%; min-width: 0; font-size: 12px; }
-.diy-search-row form button { border: 0; background: transparent; white-space: nowrap; padding: 3px; color: var(--blue); font-size: 12px; }
+.diy-search-row .product-list-search { flex: 1; max-width: 325px; }
 .diy-candidate-list { margin: 0 12px; padding: 3px 0; min-height: 320px; max-height: 660px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d0daf0 transparent; }
 .diy-product { display: grid; grid-template-columns: 78px minmax(0, 1fr) auto 82px; align-items: center; gap: 10px; min-height: 132px; border: 1px solid #dfe6f4; border-radius: 13px; padding: 13px 12px; margin-bottom: 8px; background: #fff9; }
 .igpu-logo { width: 64px; height: 64px; border-radius: 6px; background: #0076ce; color: white; display: flex; flex-direction: column; justify-content: center; padding: 8px; box-sizing: border-box; }
@@ -620,14 +631,12 @@ onMounted(() => { void refresh() })
 .diy-empty { padding: 65px 18px; text-align: center; color: #637693; }
 .diy-empty > svg { width: 32px; height: 32px; }
 .diy-empty p { font-size: 13px; line-height: 1.7; }
-.diy-candidate-note { text-align: center; font-size: 12px; color: #53658a; margin: auto 15px 0; padding: 28px 0 54px; }
 .diy-configuration-body { padding: 12px 12px 18px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
-.diy-total { padding: 11px 15px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: linear-gradient(115deg, #eaf1ff, #e2eaff); border-radius: 10px; }
+.diy-total { padding: 11px 15px; background: linear-gradient(115deg, #eaf1ff, #e2eaff); border-radius: 10px; }
 .diy-total > div { display: flex; flex-direction: column; gap: 7px; }
 .diy-total strong { font-size: 16px; color: #0c1425; }
 .diy-total b { font-size: 34px; font-weight: 750; color: #f31a35; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .diy-total .pending-total { font-size: 19px; }
-.diy-total p { margin: 0; font-size: 11px; color: #3d5682; line-height: 1.9; max-width: 46%; }
 .diy-quote-meta { display: flex; justify-content: space-between; gap: 7px; align-items: center; font-size: 10px; color: #7485a6; margin-top: -5px; }
 .diy-quote-meta button { border: 0; background: transparent; color: #4774b4; padding: 0; white-space: nowrap; font-size: inherit; }
 .diy-quote-meta button:disabled { color: #8799b6; }
@@ -682,7 +691,7 @@ onMounted(() => { void refresh() })
   .diy-product > .el-button { grid-column: 3; grid-row: 2; justify-self: end; }.diy-product-image, .diy-product-copy { grid-row: span 2; }.diy-product-copy h3 { font-size: 15px; }
   .memory-stepper { grid-column: 3; grid-row: 2; justify-self: end; }
   .diy-heading { gap: 12px; }.diy-heading > p { font-size: 12px; padding-left: 12px; }.workspace-badge { font-size: 10px; padding: 9px; }
-  .diy-total { padding: 12px; }.diy-total b { font-size: 28px; }.diy-total p { font-size: 10px; }.diy-panel-heading h2 { font-size: 18px; }
+  .diy-total { padding: 12px; }.diy-total b { font-size: 28px; }.diy-panel-heading h2 { font-size: 18px; }
 }
 @media (max-width: 1100px) {
   .diy-columns { grid-template-columns: 260px minmax(0, 1fr); }.diy-configuration { grid-column: 1 / -1; grid-row: 2; min-height: 0; }.diy-panel { min-height: 650px; }
@@ -702,7 +711,7 @@ onMounted(() => { void refresh() })
   .diy-columns { grid-template-columns: minmax(0, 1fr); }.diy-categories { grid-column: 1; grid-row: 1; min-height: 0; }.diy-candidates { grid-column: 1; grid-row: 2; min-height: 420px; }.diy-configuration { grid-column: 1; grid-row: 3; }
   .diy-category-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }.diy-category-button { min-height: 64px; gap: 8px; }.diy-category-button > svg { width: 24px; height: 24px; }.selection-state { display: none; }.compatibility-state { display: inline; }
   .category-controls { padding-left: 10px; gap: 7px; }.category-controls .slot-price { margin-left: auto; }.diy-category-note { padding: 12px 0; font-size: 11px; }
-  .diy-configuration-body { display: flex; }.diy-candidate-list { min-height: 220px; }.diy-candidate-note { padding: 20px 0; font-size: 11px; }.diy-total b { font-size: 30px; }
+  .diy-configuration-body { display: flex; }.diy-candidate-list { min-height: 220px; }.diy-total b { font-size: 30px; }
   .diy-search-row { gap: 8px; }.diy-search-row select { width: 96px; }.diy-product { padding: 11px 9px; }.diy-product-price strong { font-size: 18px; }
 }
 </style>

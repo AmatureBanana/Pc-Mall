@@ -2,8 +2,19 @@ import { test, expect } from '@playwright/test'
 
 test('visitor registers, separately logs in, sees forbidden administration and logs out', async ({ page }) => {
   const username = `web_${Date.now().toString(36)}`
+  await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
-  await page.getByRole('button', { name: '注册', exact: true }).click()
+  const guest = page.getByRole('button', { name: '游客用户菜单', exact: true })
+  await expect(guest).toHaveText('游客用户')
+  await expect(page.locator('.account-bar')).toHaveCount(0)
+  await guest.click()
+  const menu = page.getByRole('navigation', { name: '用户功能', exact: true })
+  await expect(menu.getByRole('button')).toHaveText(['登录', '注册'])
+  const bounds = await menu.boundingBox()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390)
+  await menu.getByRole('button', { name: '注册', exact: true }).click()
+  await page.setViewportSize({ width: 1586, height: 992 })
   const registration = page.getByRole('dialog', { name: '注册账户' })
   await registration.getByLabel('用户名', { exact: true }).fill(username)
   await registration.getByLabel('昵称（选填）').fill('装机新朋友')
@@ -35,13 +46,17 @@ test('visitor registers, separately logs in, sees forbidden administration and l
   })
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await ready
-  await page.getByRole('button', { name: '退出登录' }).click()
-  await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '退出登录', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: '用户菜单', exact: true }).click()
+  await expect(menu.locator(':scope > :last-child')).toHaveText('退出登录')
+  await menu.getByRole('button', { name: '退出登录', exact: true }).click()
+  await expect(menu).not.toBeVisible()
+  await expect(guest).toBeVisible()
   const finished = page.waitForEvent('requestfinished', request => request.url().endsWith('/api/auth/me'))
   release()
   await finished
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
-  await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
+  await expect(guest).toBeVisible()
   expect((await page.request.get('/api/auth/me')).status()).toBe(401)
   await expect(page.getByRole('main', { name: 'DIY 装机推荐' })).toBeVisible()
   await page.getByRole('link', { name: '商品浏览', exact: true }).click()
@@ -69,6 +84,11 @@ test('administrator uses the unified login and can navigate every administration
   await admin.getByRole('navigation').getByRole('button', { name: '后台概览' }).click()
   await expect(admin.getByRole('heading', { name: '商城管理中心' })).toBeVisible()
   await page.screenshot({ path: '../.local/task-03-admin.png', fullPage: true, animations: 'disabled' })
+  await admin.getByRole('button', { name: 'Close this dialog' }).click()
+  await page.getByRole('button', { name: '用户菜单', exact: true }).click()
+  const menu = page.getByRole('navigation', { name: '用户功能' })
+  await menu.getByRole('button', { name: '管理后台', exact: true }).click()
+  await expect(admin.getByRole('heading', { name: '商城管理中心' })).toBeVisible()
 })
 
 test('login errors remain actionable and a lost session clearly requires signing in', async ({ page }) => {

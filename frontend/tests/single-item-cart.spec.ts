@@ -30,7 +30,7 @@ async function signIn(page: Page, credentials: { username: string; password: str
   await dialog.getByLabel('用户名', { exact: true }).fill(credentials.username)
   await dialog.getByLabel('密码', { exact: true }).fill(credentials.password)
   await dialog.getByRole('button', { name: '登录', exact: true }).click()
-  await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '用户菜单', exact: true })).toBeVisible()
 }
 
 /** A real on-sale fixture with stock, created by the ephemeral administrator. */
@@ -87,7 +87,7 @@ async function openCart(page: Page) {
   return cartPage(page)
 }
 
-test('DIY confirms a whole configuration, shows success, and opens it from the main header', async ({ page }) => {
+test('DIY transfers a whole configuration directly to the cart and shows success', async ({ page }) => {
   await page.goto('/')
   await signIn(page, await registerUser(page))
   const memory = (await (await page.request.get('/api/products?category=MEMORY&keyword=KF560C36BBE2-16')).json()).data[0]
@@ -102,7 +102,6 @@ test('DIY confirms a whole configuration, shows success, and opens it from the m
   const confirmation = page.getByRole('dialog', { name: '转入购物车' })
   const header = page.locator('.header')
   await expect(header.getByRole('button', { name: /^购物车/ })).toBeVisible()
-  await expect(page.locator('.account-bar').getByRole('button', { name: /^购物车/ })).toHaveCount(0)
   const memoryCategory = page.getByRole('navigation', { name: 'DIY 硬件分类' }).getByRole('button', { name: /^内存 / })
   const memoryQuantity = page.getByRole('group', { name: '内存数量' })
   await memoryCategory.click()
@@ -115,18 +114,14 @@ test('DIY confirms a whole configuration, shows success, and opens it from the m
   await memoryCategory.click()
   await expect(memoryQuantity.getByLabel('当前内存根数')).toHaveText('4')
   await expect(page.getByLabel('当前参考总价')).toHaveText('¥11,451.00')
-  await transfer.click()
-  const preview = confirmation.getByRole('region', { name: '待加入的装机方案' })
-  await expect(preview.getByRole('listitem')).toHaveCount(8)
-  await expect(preview).toContainText('Intel Core i5-14600KF')
-  await expect(preview.getByRole('listitem').filter({ hasText: 'FURY Beast 16GB' })).toContainText('×4 根')
-  await expect(confirmation).toContainText('¥11,451.00')
-  await expect(cartPage(page)).toHaveCount(0)
-  await page.screenshot({ path: test.info().outputPath('diy-cart-confirmation.png'), animations: 'disabled' })
-  await confirmation.getByRole('button', { name: '取消', exact: true }).click()
-  expect((await (await page.request.get('/api/cart')).json()).data.configurations).toEqual([])
-  await transfer.click()
-  await confirmation.getByRole('button', { name: '确定', exact: true }).click()
+  await expect(transfer).toBeEnabled()
+  let submissions = 0
+  page.on('request', request => {
+    if (new URL(request.url()).pathname === '/api/cart/configurations' && request.method() === 'POST') submissions++
+  })
+  await transfer.evaluate((button: HTMLButtonElement) => { button.click(); button.click() })
+  await expect(page).toHaveURL(/#cart$/)
+  expect(submissions).toBe(1)
   await expect(page.getByText('装机方案已加入购物车', { exact: true })).toBeVisible()
   await expect(page.locator('.el-message')).toHaveCSS('position', 'fixed')
   await expect(header.getByLabel('购物车共 1 件')).toBeVisible()
@@ -194,7 +189,7 @@ async function signInInPage(page: Page, credentials: { username: string; passwor
   await dialog.getByLabel('用户名', { exact: true }).fill(credentials.username)
   await dialog.getByLabel('密码', { exact: true }).fill(credentials.password)
   await dialog.getByRole('button', { name: '登录', exact: true }).click()
-  await expect(page.getByRole('button', { name: '退出登录' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '用户菜单', exact: true })).toBeVisible()
   await expect(dialog).not.toBeVisible()
 }
 
@@ -331,8 +326,9 @@ test('the cart survives signing out and in again, and an invalid line stays labe
     await page.getByRole('dialog', { name: '商品详情' }).getByRole('button', { name: '关闭详情' }).click()
     await expect(page.getByLabel('购物车共 1 件')).toBeVisible()
 
+    await page.getByRole('button', { name: '用户菜单', exact: true }).click()
     await page.getByRole('button', { name: '退出登录' }).click()
-    await expect(page.getByRole('button', { name: '登录', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '游客用户菜单', exact: true })).toBeVisible()
     await signIn(page, credentials)
     // A real re-login reads the persisted cart instead of an in-page memory.
     const restored = await openCart(page)
@@ -389,6 +385,7 @@ test('a visitor is asked to sign in and cannot reach another owner cart', async 
   await page.goto('/#product/1')
   await page.getByRole('dialog', { name: '商品详情' }).getByRole('button', { name: '加入购物车', exact: true }).click()
   await page.getByRole('dialog', { name: '商品详情' }).getByRole('button', { name: '关闭详情' }).click()
+  await page.getByRole('button', { name: '用户菜单', exact: true }).click()
   await page.getByRole('button', { name: '退出登录' }).click()
 
   // A second real account starts with an empty cart and never sees the first account's line.
@@ -456,7 +453,7 @@ test('an expired session asks for a fresh sign-in instead of a rule error', asyn
   const token = await csrf(page.request)
   expect((await page.request.post('/api/auth/logout', { headers: { [token.headerName]: token.token } })).status()).toBe(200)
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-  await expect(page.locator('.account-bar').getByRole('button', { name: '登录', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '游客用户菜单', exact: true })).toBeVisible()
   await expect(detail.getByRole('button', { name: '登录后加入购物车', exact: true })).toBeVisible()
 })
 
@@ -513,8 +510,9 @@ test('a delayed cart read cannot cross an in-page sign-out and sign-in', async (
     await before.getByRole('button', { name: '刷新价格与库存' }).click()
     expect((await held.response).status()).toBe(200)
     await before.getByRole('button', { name: '继续购物', exact: true }).click()
+    await page.getByRole('button', { name: '用户菜单', exact: true }).click()
     await page.getByRole('button', { name: '退出登录' }).click()
-    await expect(page.locator('.account-bar').getByRole('button', { name: '登录', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '游客用户菜单', exact: true })).toBeVisible()
     await signInInPage(page, second)
     const after = await openCart(page)
     await held.finish()
