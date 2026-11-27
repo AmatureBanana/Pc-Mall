@@ -70,3 +70,7 @@
 ### Domain docs
 
 领域文档采用 single-context 布局。探索代码库前阅读 `docs/agents/domain.md`。
+
+### Development & testing
+
+本地开发启动、环境变量契约、数据库迁移与测试运行细则见 `docs/development.md`。

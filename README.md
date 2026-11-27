@@ -1,158 +1,125 @@
-# 装机猫 · 电脑硬件商城
+# 装机猫 · 电脑硬件商城与 DIY 装机平台
 
-[空库部署与五条演示路径](docs/delivery.md)提供同源启动、数据库版本和逐步操作说明。[任务 25 验收报告](docs/evidence/task-25.md)记录实测结果、原编号追踪及发布条件。
+面向电脑硬件选购与 DIY 装机场景的全栈 Web 应用，打通**硬件检索、DIY 实时兼容检测、三场景预算推荐、单品与配置组混合交易、后台运营履约**完整链路。
 
-任务17提供[配置组混合下单与SKU聚合](docs/mixed-orders.md)：确认报价后，单品与多个完整配置组在同一事务创建待支付订单、聚合预占库存并仅清理选中项。成交快照保留各组归属，浏览器结果地址可刷新；支付及取消由后续任务接入。
+`Java 21` · `Spring Boot 3.5` · `MyBatis 3` · `Flyway` · `MySQL 8.0` · `Vue 3` · `TypeScript` · `Element Plus` · `Playwright`
 
-任务 01～08：从空 MySQL 库经 Flyway 迁移、MyBatis 查询、公开 HTTP 接口，到 Vue 商品页面；支持八类硬件查询、搜索、详情，以及注册、Session 登录、CSRF、个人资料、昵称修改、改密撤销旧会话、后台商品草稿、分类参数、上下架、普通用户查询与启禁、受控调价与库存调整、性能评分维护及原子审计。任务13提供本人持久化单品购物车；任务14支持合法配置整组原子入车、去重、全车同SKU库存聚合和整组删除，读取与写入都不预占库存。
+---
 
-任务08新增一款核显CPU，正常演示种子共13件商品，并提供固定Blender 4.3.0的CPU/GPU参考。受控数据包保留458份官方完整提交、SHA-256和CC0许可；离线执行 `python scripts/performance-data.py --verify` 可核验。评分管理、版本与三场景数据边界见 [性能数据契约](docs/performance-data.md)。
+## 项目亮点
 
-用户追加的全商品性能标签已覆盖商城卡片、搜索结果、详情及后台。CPU/GPU使用渲染参考分，内存/SSD使用[容量优先综合评分](docs/capacity-priority-scores.md)，其他类别展示当前关键规格；V16补充417份AMD完整提交，与初始包合计875份。标签与新增数据包见[全商品性能标签](docs/product-performance-tags.md)，AMD包可用 `python scripts/performance-amd-data.py --verify` 离线核验。
+- **八类硬件与多维参数检索**：覆盖 CPU、主板、显卡、内存、SSD、电源、机箱、CPU 散热器 8 大品类（演示库初始 574 件在售商品），支持按分类、关键词、硬件参数、平台、品牌、容量、额定功率及价格区间组合筛选。
+- **可核验的性能标签与评分体系**：CPU/GPU 接入基于 Blender 4.3.0 的公开渲染基准（共 875 份可离线校验的完整提交）与 Geekbench 参考数据，内存与 SSD 提供容量优先综合评分，商品卡片、详情与后台统一呈现。
+- **DIY 装机工作区与实时兼容检测**：三栏交互式装机工作区，支持任意顺序选配、核显/独显切换、内存 1～4 根数量调节与实时参考报价；服务端统一执行插槽、内存代际、尺寸限高限长、功耗等核心规则（C01～C06、C08～C10）并给出修订建议。
+- **办公 / 游戏 / 创作三场景预算推荐**：输入预算即可在当前在售有货目录中搜索满足场景门槛、核心兼容且在预算内的完整装机方案，展示分项权重与评分，并支持一键导入 DIY 工作区复验加购。
+- **单品 + 配置组混合交易闭环**：支持单品与多套完整 DIY 配置组同时加入购物车和原子下单；同一事务内按 SKU 聚合预占库存并保存不可变成交快照，支持模拟支付、主动取消、30 分钟超时自动取消释放库存及后台履约完成。
+- **生产级工程约束**：服务端权威校验（价格、库存、兼容、权限均不信任前端）、Session + CSRF + 登录限流安全防护、前后端同源单 JAR 交付、真实 MySQL 隔离测试与端到端 Playwright 验收。
 
-## 环境与依赖
+---
 
-- JDK 21；本机已验证 Oracle JDK 21.0.10。
-- Node.js 22.12+；本机已验证 24.22.1 / npm 12.2.2。
-- MySQL 8.0（已验证 8.0.45）；复用安装目录中的程序，项目实例不注册系统服务。
-- Maven Wrapper 锁定 3.9.11；首次运行需要联网下载。Java 依赖由 Spring Boot 3.5.16 BOM 固定，MyBatis Starter 3.0.5；前端直接依赖精确版本与完整 `package-lock.json` 一并提交。
-- PowerShell 7、Edge（Playwright 默认使用本机 `msedge`，不自动下载另一套浏览器）。
+## 界面预览
 
-Spring Boot 3.5 / MyBatis Starter 3.0 的兼容范围见[官方说明](https://mybatis.org/spring-boot-starter/mybatis-spring-boot-autoconfigure/)。[Vite](https://vite.dev/guide/) 与 [Element Plus](https://element-plus.org/en-US/guide/installation.html) 使用正式发布依赖。来源、许可和数据边界见 [docs/data-sources.md](docs/data-sources.md)。
+### 硬件商城与全商品性能标签
+支持八类硬件浏览、多维参数筛选、渲染参考分 / 容量评分及关键规格展示。
 
-## 一次性初始化
+![硬件商城首页与性能标签](docs/evidence/product-performance-tags-storefront.png)
 
-在仓库根目录执行，路径按本机安装位置调整：
+### 智能装机推荐入口（办公 / 游戏 / 创作）
+按预算与使用场景一键生成完整装机方案，也可直接进入手动 DIY。
+
+![三场景预算推荐入口](docs/evidence/task21-welcome-desktop.png)
+
+### DIY 装机工作区与实时兼容诊断
+三栏结构实时联动：左侧八类配件进度、中间候选硬件与核显选择、右侧参考总价与兼容性建议。
+
+![DIY 装机工作区](docs/evidence/diy-integrated-graphics.png)
+
+### 个人中心与订单管理
+统一管理单品订单与 DIY 整组配置订单，支持状态筛选、日期检索、模拟支付与取消操作。
+
+![用户中心与订单管理](docs/evidence/user-center-orders.png)
+
+---
+
+## 核心功能全景
+
+| 模块 | 主要能力 |
+| --- | --- |
+| **硬件商城** | 八类硬件分页/筛选、关键词与参数检索、商品详情一致快照、性能标签与数据来源透明展示 |
+| **DIY 装机** | 三栏选配、核显/独显显式选择、实时报价、自动/手动兼容性检测与修订建议、游客配置登录后自动续接 |
+| **智能推荐** | 办公 / 游戏 / 创作三场景预算搜索、场景门槛与权重评分、失败原因细粒度分类、推荐方案导入 DIY 复验入车 |
+| **购物车与下单** | 账户持久化单品购物车 + 完整配置组购物车、同 SKU 全车库存聚合、预结算复验、混合原子下单与成交快照 |
+| **支付与履约** | 模拟支付（幂等与到期截止保护）、待支付主动取消、每分钟扫描超时自动取消并原子释放库存、管理员履约完成 |
+| **账号与后台** | 注册/统一登录、Session + CSRF、登录失败限流、个人中心（昵称/头像/改密撤销旧会话）；后台商品草稿与八类参数维护、受控调价与调库存、性能评分管理、用户启禁、跨用户订单管理与原子审计 |
+
+---
+
+## 技术栈与架构特点
+
+| 层次 | 技术选型 | 说明 |
+| --- | --- | --- |
+| **后端** | Java 21 · Spring Boot 3.5.16 · Spring Security · MyBatis 3.0.5 | 分层接口、事务与并发控制、Session/CSRF 与角色鉴权 |
+| **数据库与迁移** | MySQL 8.0 · Flyway | 独立本地实例，演示库 `pc_mall_demo` 与测试库 `pc_mall_test` 权限隔离 |
+| **前端** | Vue 3.5 · TypeScript 5.9 · Vite 8 · Element Plus 2.14 | 组件化 SPA，开发态代理 `/api`，构建后打入同源 JAR 静态资源 |
+| **质量保障** | JUnit 5 · Spring Boot Test · Playwright 1.64（Edge） | 无内存库回退的真实 MySQL 集成测试 + 端到端浏览器自动化验收 |
+
+**工程化设计亮点**：
+1. **同源单 JAR 交付**：通过 Maven `-Pdemo` 将 `frontend/dist` 打包进 Spring Boot 可执行 JAR，一套进程同时提供前端页面、本地 SVG 资源与 `/api` 接口。
+2. **严格的数据库与测试隔离**：本地启动脚本自动拉起隔离的 MySQL 8.0 实例（默认 `127.0.0.1:33307`），并为演示库和测试库分配最小权限独立账号；测试环境内置数据源守卫，杜绝误连演示库。
+3. **可追溯的数据边界**：硬件性能基准附带原始数据、许可说明与离线 SHA-256 核验脚本，商品价格与库存明确标识为演示数据并与兼容结论解耦。
+
+---
+
+## 项目结构
+
+```text
+.
+├── backend/       # Spring Boot + MyBatis 后端源码、Flyway 迁移（db/migration、db/catalog）及集成测试
+├── frontend/      # Vue 3 + TypeScript 前端应用与 Playwright 端到端测试
+├── data/          # 可离线校验的公开硬件性能参考数据包与许可说明
+├── scripts/       # 本地隔离 MySQL 初始化、开发启动、同源打包、管理员引导与全量验收脚本
+├── docs/          # 部署演示手册、开发与测试手册、各业务契约文档及验收证据
+└── pom.xml        # Maven 配置与同源演示打包 profile（-Pdemo）
+```
+
+---
+
+## 快速体验
+
+> 本项目默认面向 Windows PowerShell 7 演示与验证；前置依赖为 **JDK 21**、**Node.js 22.12+** 与 **MySQL 8.0**（复用安装目录中的程序，不修改系统 MySQL 服务）。
+
+### 1. 初始化项目隔离数据库
+
+在仓库根目录执行（按本机实际路径调整 `JAVA_HOME` 与 `-MySqlHome`）：
 
 ```powershell
 $env:JAVA_HOME = 'D:\Java'
 $env:MAVEN_USER_HOME = "$PWD\.local\maven-user"
 ./scripts/local-db.ps1 -MySqlHome 'D:\MySQL\MySQL Server 8.0'
-. ./.local/env.ps1
 ```
 
-默认新实例只监听 `127.0.0.1:33307`，数据放在 `.local/mysql-data`，日志在 `.local/mysql-error.log`。脚本建立 `pc_mall_demo` 和 `pc_mall_test`；两个账户仅有各自库内迁移与数据访问权限，没有跨库或全局权限。root、演示和测试密码随机生成，保存在被 Git 忽略的 `.local/env.ps1`，初始化 SQL 成功后删除。不使用原有系统 MySQL 的数据目录、账户或端口。
-
-首次成功验证两个数据库账户后写入 `.local/mysql-ready`。再次执行脚本只启动或检查同一实例，不重新建库或导入。已有凭据却缺少就绪标记、配置或数据目录时，脚本在连接和启动前拒绝半成品；检查日志和本地配置后再处理，不提供自动删库重建。停止实例：
-
-```powershell
-./scripts/local-db.ps1 stop
-```
-
-Flyway 在应用启动时校验并执行版本化 SQL。默认演示配置使用 V1～V44，空库初始有八类共 574 件在售商品，其中 CPU 散热器、电源和机箱各 50 件。`test` 配置加载 V1～V31 和 V37，常规回归使用 13 件基础在售商品。重复启动会校验已执行的迁移，后续数据变更通过新增迁移交付。 [迁移和目录版本](docs/delivery.md#数据与迁移) · [分类参数契约](docs/catalog-parameters.md)
-
-## 开发启动
-
-两个终端分别执行：
-
-```powershell
-# 终端 1，仓库根目录，设置 JAVA_HOME 后执行
-./scripts/dev-backend.ps1
-```
-
-```powershell
-# 终端 2
-cd frontend
-npm.cmd ci
-npm.cmd run dev
-```
-
-打开 `http://127.0.0.1:5173`。Vite 把 `/api` 代理到 `http://127.0.0.1:8080`。后端启动脚本自动读取本地 env 文件；连接配置缺失、库不可用或迁移失败时启动失败，不回退到内存数据库。
-
-## 同源演示构建与启动
-
-先停止正在运行的 Vite（Windows 会锁定其原生构建模块），然后：
+### 2. 构建并启动同源演示服务
 
 ```powershell
 ./scripts/package.ps1
-. ./.local/env.ps1
-& "$env:JAVA_HOME\bin\java.exe" -jar target/pc-mall-0.1.0.jar
+./scripts/start-with-admin.ps1 -Username demo_admin
 ```
 
-打开 `http://127.0.0.1:8080`。构建或重启后，对已经打开的浏览器标签页执行刷新；尤其要在实际交付的内置浏览器检查商品列表，避免旧页面资源与新接口不匹配。JAR 内包含前端页面和本地 SVG，商品仍通过同一源的真实 `/api/products` 接口读取 MySQL。该构建命令跳过测试；测试需按下一节单独运行。等效手动构建为 `frontend` 下 `npm ci`、`npm run build`，随后仓库根目录 `./mvnw.cmd -Pdemo -DskipTests package`。未构建页面时 `-Pdemo` 明确失败。
+按提示输入初始管理员密码后，打开浏览器访问 **`http://127.0.0.1:8080`** 即可体验商城、DIY 装机、智能推荐与管理后台。
 
-## 配置契约
+> 如需前后端分离热更新开发、查看完整环境变量表、或运行全量后端与 Playwright 自动化验收（`./scripts/test.ps1`），请参阅 [开发、配置与测试手册](docs/development.md)。
 
-| 环境变量 | 含义 |
-| --- | --- |
-| `DB_URL` | 演示 JDBC URL，示例 `jdbc:mysql://127.0.0.1:33307/pc_mall_demo` |
-| `DB_USERNAME` / `DB_PASSWORD` | 演示库账户 / 密码，无默认值 |
-| `TEST_DB_URL` | 显式专用 MySQL URL，schema 必须为 `pc_mall_test` |
-| `TEST_DB_USERNAME` / `TEST_DB_PASSWORD` | 测试账户必须为 `pc_mall_test`，密码无默认值 |
-| `PORT` | 后端端口，默认 8080；修改时同步调整 Vite 代理 |
-| `BROWSER_BASE_URL` | Playwright 验收服务地址，默认 `http://127.0.0.1:8080` |
-| `JAVA_HOME` | JDK 21 安装目录 |
-| `MAVEN_USER_HOME` | 可选，Wrapper 分发包缓存；建议设为项目 `.local/maven-user` |
-| `ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD` | 可选，成对提供的初始管理员凭据；不写入仓库，已有管理员时不重置或新增 |
-| `SESSION_COOKIE_SECURE` | 本机 HTTP 默认 false，HTTPS 部署设 true；Session 始终 HttpOnly、SameSite=Lax |
-| `LOGIN_MAX_FAILURES` | 登录失败阈值，默认 5；按用户名及实际连接 IP 独立限制 |
-| `LOGIN_MAX_KEYS` | 内存活动限流键上限，默认10000，至少2；受限请求不创建新键 |
-| `LOGIN_FAILURE_WINDOW` / `LOGIN_LOCK_DURATION` | 失败窗口 / 锁定时间，均默认 15m，必须为正值 |
+---
 
-可使用自行管理的 MySQL：手工建立上述两个 schema 与分别受限的账户，在环境中设置变量。测试配置保护在数据源和 Flyway 创建之前运行，拒绝缺失变量、其他 schema、其他用户名、与显式测试变量不一致的数据源覆盖，也禁止 Flyway 独立连接、目标 schema 和 Hikari 连接身份覆盖。测试 JDBC 查询选项只接受 `characterEncoding`、`connectionTimeZone`、`connectTimeout`、`socketTimeout`、`sslMode`、`allowPublicKeyRetrieval`；不能在 URL 中改写账户或数据库。`test` profile 无演示库或内存库回退；启动时保持 Flyway 开启。故障注入测试仅在自己的不可连接端口配置中禁用迁移。
+## 文档导航
 
-## 测试与验收
+### 入门、部署与开发
+- [空库部署与五条演示路径](docs/delivery.md) — 从零部署、重启、演示步骤（游客浏览、DIY 登录恢复、三场景推荐加购、混合下单履约、取消与超时）
+- [开发、配置与测试手册](docs/development.md) — 本地开发启动、环境变量契约、Flyway 迁移边界、单测与全量验收命令
+- [任务 25 验收报告](docs/evidence/task-25.md) — 实测环境、执行记录与发布条件
 
-MySQL 就绪、前端依赖已安装后，在仓库根目录运行（测试脚本会自行启动隔离服务；不要另占用 18081 端口）：
-
-```powershell
-./scripts/test.ps1
-```
-
-它执行真实 MySQL 后端测试、Vue/TypeScript 检查、前后端同源构建和 Edge 浏览器测试。后端及浏览器服务均启用 `test` profile，仅使用测试库；浏览器服务默认在 18081，临时管理员凭据只放进程环境，结束时只删除该临时管理员并停止自己的进程。商品故障和空响应测试在浏览器网络边界注入，不冒充数据库故障证据。默认商品为固定夹具，不自动重置库；测试库请勿手工创建管理员，以免与首次初始化验收冲突。MySQL CLI 路径可传 `-MySqlHome`，测试端口可传 `-BrowserPort`。脚本会重新打包，请先停止持有 `target` JAR 的进程。
-
-单文件开发循环：
-
-```powershell
-. ./.local/env.ps1
-./mvnw.cmd -Dtest=ProductBrowserTest test
-./mvnw.cmd -Dtest=ProductCatalogTest test
-./mvnw.cmd -Dtest=TestDatabaseSafetyTest test
-./mvnw.cmd -Dtest=CatalogFailureTest test
-./mvnw.cmd -Dtest=SessionAuthTest test
-./mvnw.cmd -Dtest=ProfilePasswordTest test
-./mvnw.cmd -Dtest=CatalogAdministrationTest test
-./mvnw.cmd -Dtest=UserAdministrationTest test
-./mvnw.cmd -Dtest=PriceStockTest test
-./mvnw.cmd -Dtest=SingleItemCartTest test
-./mvnw.cmd -Dtest=ConfigurationCartTest test
-cd frontend
-npm.cmd run typecheck
-npm.cmd test -- --grep 'guest sees'
-```
-
-单独运行认证浏览器文件须显式设置指向测试服务的 `BROWSER_BASE_URL` 及该服务的 `BROWSER_ADMIN_USERNAME` / `BROWSER_ADMIN_PASSWORD`；推荐直接用完整脚本自动处理临时凭据。资料与改密专项浏览器文件为 `frontend/tests/profile-password.spec.ts`。执行结果见[任务01证据](docs/evidence/task-01.md)、[任务02证据](docs/evidence/task-02.md)、[任务03证据](docs/evidence/task-03.md)及[任务04证据](docs/evidence/task-04.md)。
-
-## 注册、登录与管理员
-
-商城顶部提供注册和统一登录。注册只创建普通用户，成功后进入登录；登录按服务端角色进入商城或后台。后台商品管理已可分页筛选、创建草稿、编辑八类参数及上下架；用户管理支持查询与启禁，订单管理支持跨用户筛选、成交快照与受控完成。用户可直接打开 `/#login`、`/#register`、`/#admin`，权限仍由后端检查。
-
-管理员进入“商品管理”或 `/#admin/products`，新增时设置固定SKU、类别和可选初始售价；保存后补充资料与分类参数，全部必要条件满足后再上架。默认库存0；SKU和类别创建后不可修改。详情提供调价及按增减量调整可售库存，两者都须填写原因，与审计原子提交，已有预占单独保留。价格或资料版本冲突时重新载入。接口、单位、来源与审计复用说明见[商品管理契约](docs/catalog-administration.md)、[价格与库存契约](docs/price-stock.md)，验证见[任务05记录](docs/evidence/task-05.md)、[任务07记录](docs/evidence/task-07.md)。
-
-管理员进入“用户管理”或 `/#admin/users`，按用户名和状态查询普通用户、查看详情并确认启禁。禁用拒绝新登录及既有会话的后续受保护请求，重新启用仍须重新登录；管理员账户及角色、用户名、密码等字段受到保护。状态与共享审计原子提交，冲突时重新载入；不删除账户或更改购物及订单历史。接口与边界见[用户管理契约](docs/user-administration.md)，验证见[任务06记录](docs/evidence/task-06.md)。
-
-登录后点击右上角头像和用户名展开四项菜单：个人中心、订单管理、我的购物车、账号与安全；进入后左侧保留相同导航。个人中心 `/#profile` 可查看本人资料、修改最多30个Unicode字符的昵称；账号与安全 `/#security` 修改密码，须填写旧密码、新密码和确认新密码；成功后全部旧会话失效，页面转到登录并清空密码输入。新密码为8～64个Unicode字符且UTF-8不超过72字节；旧密码错误或其他校验失败时，原密码与有效会话保持可用。
-
-首次建立管理员，在已构建 JAR 且已停止已有演示服务后运行：
-
-```powershell
-./scripts/start-with-admin.ps1 -Username your_admin
-```
-
-脚本隐式读取密码并启动应用，密码不进入命令行、脚本或仓库。已有任意管理员时初始化不再创建账户，也不重置密码或提升普通账户。未提供初始化配置时可以正常启动，仅开放普通用户注册。完整接口、权限和交接约定见[认证说明](docs/authentication.md)。
-
-## 当前交付边界
-
-公开的 `GET /api/products?category=MEMORY&keyword=Kingston` 返回当前上架商品。category 可省略，或使用 CPU、MOTHERBOARD、GPU、MEMORY、SSD、PSU、CASE、COOLER；keyword 最长100字符，首尾空白忽略，对名称、品牌、型号、SKU和摘要做不区分大小写的基础文本匹配，`%`/`_`按字面查询。二者组合过滤。合法空结果为 HTTP200、`data: []`；非法类别或过长关键词为400、`INVALID_QUERY`。
-
-`GET /api/products/{id}` 返回 `data: {product, description, parameters, dataVersion}`，其中 product 保留真实ID、销售SKU、类别、品牌、型号、图片地址、两位小数金额字符串、库存与来源说明，parameters 保留有类型数值、集合、单位和逐字段来源。详情读取同一数据库来源，在只读事务中形成一致快照；不缓存价格、库存或上下架状态。不合法ID为400/`INVALID_PRODUCT_ID`，不存在为404/`PRODUCT_NOT_FOUND`，下架为409/`PRODUCT_NOT_SELECTABLE`；缺货仍能查看并显示“暂时缺货”。服务失败为503/500，不转换为空列表。
-
-点击商品名称或图片打开详情，`/#product/7`这样的链接可直接打开并刷新；弹窗提供价格库存刷新、错误重试和关闭操作。类别及关键词走真实后端，价格范围与排序继续对当前查询结果做便捷筛选。账号接口、Session/CSRF、个人资料与改密及后台商品维护已接入；其他路径默认拒绝。
-
-顶部“DIY 装机”或`/#diy`进入八类硬件三栏工作区。支持任意顺序选择、同类替换、移除和二次确认清空，每类一个销售SKU，内存可选1～4根、其他类别各一个销售单位。当前标签页通过sessionStorage保留商品引用、来源与配置修订，刷新恢复后重新获取服务端参考报价。`GET /api/diy/quote`公开只读，不信任客户端金额；下架、缺货或失效引用明确标识，报价失败时保留选择并支持重试，旧响应不会覆盖新配置。参数与边界见[DIY工作区契约](docs/diy-workspace.md)。
-
-登录后可打开商品详情“加入购物车”。每次加入 1 件，同一 SKU 合并成一行；账号栏“购物车”显示合计件数并打开 `#cart` 弹窗，可改数量（1～99 且不超过当前可售量）、移除和查看服务端现价合计。购物车按账户持久保存，退出重登后仍在；读取与增删改都不预占或扣减库存，也不锁价。下架、缺货或库存不足的行会保留并标注原因。接口、边界与并发保护见[单品购物车契约](docs/single-item-cart.md)，验证见[任务13记录](docs/evidence/task-13.md)。
-
-选中购物车单品和完整配置组、确认当前报价后可原子下单，成交快照保留原单价与分组。用户菜单“订单管理”或 `/#orders` 以卡片展示本人单品和配置组成交记录，支持状态标签、订单号/商品名、下单日期筛选及10/20/50条分页，可直接确认模拟支付或取消。打开详情或刷新 `/#order/订单号` 查看成交历史，并确认模拟支付。支付只使用服务端成交金额和截止时间，不再次扣库存；重复请求返回原支付结果，恰好到期也会拒绝。V25增加支付时间，V27增加取消原因、时间和扫描索引。待支付详情可确认取消；后台每分钟扫描到期订单，取消与库存释放原子提交，失败可安全重试且不恢复购物车。列表和详情显示取消结果。管理员可进入 `/#admin/orders` 按订单号、购买用户名和四类状态分页查询，查看成交单品与配置组，并确认完成已支付订单。完成时间、操作者和审计原子保存，重复或并发完成不重复转换、不再次扣库存。详见[后台订单管理契约](docs/order-administration.md)。接口与边界见[订单查询与模拟支付](docs/order-payment-history.md)、[取消与超时](docs/order-cancellation-timeout.md)，验证见[任务18记录](docs/evidence/task-18.md)、[任务19记录](docs/evidence/task-19.md)。
-
-`POST /api/compatibility/check` 公开执行 C01～C06、C08～C10 九项检查，返回完整性、缺件、分项诊断、五类综合状态、配置修订、商品参数指纹、规则版本与时间。七类基础硬件必需，显卡栏必须明确选择核显或独显，不再执行图形输出路径检查；只有完整且全部适用核心项实际通过才 `corePassed=true`。前端支持自动/手动重检与旧响应保护。兼容结论与价格、可售性、库存和权限分开核验；P1 扩展风险尚未验证。接口契约见[统一兼容检测](docs/compatibility.md)。DIY 确认后经服务端当前数据复验可整组入车，配置去重、内存1～4根与事务约定见[配置组购物车](docs/configuration-cart.md)。任务15支持返回 DIY 整组编辑、实时失效诊断、混合选择及报价确认预检查，见[预结算契约](docs/cart-checkout-preview.md)。推荐和其余后台维护由后续任务实现。
+### 核心业务与接口契约
+- **商城与性能数据**：[分类参数](docs/catalog-parameters.md) · [目录扩展](docs/catalog-expansion.md) · [性能数据](docs/performance-data.md) · [全商品性能标签](docs/product-performance-tags.md) · [容量优先评分](docs/capacity-priority-scores.md) · [数据来源与许可](docs/data-sources.md)
+- **DIY 与智能推荐**：[DIY 工作区](docs/diy-workspace.md) · [统一兼容检测](docs/compatibility.md) · [核显支持](docs/integrated-graphics.md) · [三场景预算推荐](docs/scenario-recommendation.md)
+- **购物车与订单交易**：[单品购物车](docs/single-item-cart.md) · [配置组购物车](docs/configuration-cart.md) · [预结算复验](docs/cart-checkout-preview.md) · [混合下单](docs/mixed-orders.md) · [支付与订单历史](docs/order-payment-history.md) · [取消与超时释放](docs/order-cancellation-timeout.md)
+- **账号与管理后台**：[认证与会话安全](docs/authentication.md) · [商品管理](docs/catalog-administration.md) · [价格与库存](docs/price-stock.md) · [用户管理](docs/user-administration.md) · [订单管理](docs/order-administration.md)
